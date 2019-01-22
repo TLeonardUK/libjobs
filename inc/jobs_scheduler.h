@@ -29,6 +29,7 @@
 #define __JOBS_SCHEDULER_H__
 
 #include "jobs_enums.h"
+#include "jobs_memory.h"
 
 #include <functional>
 
@@ -38,27 +39,6 @@ class thread;
 class fiber;
 
 /**
- *  \brief User-defined memory allocation function.
- *
- *  Function prototype that can be passed into a job scheduler through
- *  set_memory_functions to override the default malloc memory allocator.
- *
- *  \param size Size of block of memory to be allocated.
- *  \return Pointer to block of memory that was allocated, or nullptr on failure.
- */
-typedef std::function<void*(size_t size)> memory_alloc_function;
-
-/**
- *  \brief User-defined memory deallocation function.
- *
- *  Function prototype that can be passed into a job scheduler through
- *  set_memory_functions to override the default free memory deallocator.
- *
- *  \param ptr Pointer to memory to be deallocated.
- */
-typedef std::function<void(void* ptr)> memory_free_function;
-
-/**
  *  The scheduler is the heart of the library. Its responsible for managing the 
  *  creation and execution of all threads, fibers and jobs.
  */
@@ -66,18 +46,20 @@ class scheduler
 {
 public:
 
+	/** Default constructor. */
+	scheduler();
+
     /** Destructor. */
     ~scheduler();
 
     /**
      * \brief Overrides the default memory allocation functions used by the scheduler.
      *
-     * \param alloc Function to use for memory allocation.
-     * \param free  Function to use for freeing memory allocated with alloc.
+     * \param functions Struct containing all the memory allocation functions to override.
      * 
      * \return Value indicating the success of this function.
      */
-    result set_memory_functions(const memory_alloc_function& alloc, const memory_free_function& free);
+    result set_memory_functions(const memory_functions& functions);
 
     /**
      * \brief Sets the maximum number of jobs.
@@ -135,8 +117,55 @@ public:
      */
     result init();
 
-//    result create_job(job instance);
-//    void queue_job(job jobInstance);
+	/**
+	 * \brief Creates a new job that can later be enqueued for execution.
+	 *
+	 * Ones a job is fully created and setup, it can be queued for execution by calling queue_job.
+	 *
+	 * \param instance On success the created job will be stored here.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result create_job(job*& instance);
+
+	/**
+	 * \brief Queues a previously created job for execution.
+	 *
+	 * The job to be queued must have previously been created with create_job.
+	 *
+	 * \param instance Job to enqueue for execution.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result queue_job(job* instance);
+
+private:
+
+	/** Internal representation of a thread pool. */
+	struct thread_pool
+	{
+		/** Job priorities this pool can execute. */
+		priority job_priorities = priority::all;
+
+		/** Number of threads in this pool. */
+		size_t thread_count = 0;
+
+		/** Threads in this pool. */
+		thread* threads = nullptr;
+	};
+
+	/** Internal representation of a fiber pool. */
+	struct fiber_pool
+	{
+		/** Size of stack for each fiber in this pool. */
+		size_t stack_size = 0;
+
+		/** Number of fibers in this pool. */
+		size_t fiber_count = 0;
+
+		/** Fibers in this pool. */
+		fiber* fibers = nullptr;
+	};
 
 private:
 
@@ -146,33 +175,23 @@ private:
     /** Default memory deallocation function */
     static void default_free(void* ptr);
 
+	/** Entry point for all worker threads. */
+	void worker_entry_point(const thread& this_thread, const thread_pool& thread_pool);
+
+	/** Entry point for all worker job fibers. */
+	void worker_fiber_entry_point(const fiber& this_fiber);
+
+	/**
+	 * Executes the next job in the work queue.
+	 *
+	 * \param job_priorities Bitmask of priorities that can be executed.
+	 * \param can_block True if the function can block until a job is available to execute.
+	 *
+	 * \return True if a job was executed.
+	 */
+	bool execute_next_job(priority job_priorities, bool can_block);
+
 private:  
-
-    /** Internal representation of a thread pool. */
-    struct thread_pool
-    {
-        /** Job priorities this pool can execute. */
-        priority job_priorities = priority::all;
-
-        /** Number of threads in this pool. */
-        size_t thread_count = 0;
-
-        /** Threads in this pool. */
-        thread* threads = nullptr;
-    };
-
-    /** Internal representation of a fiber pool. */
-    struct fiber_pool
-    {
-        /** Size of stack for each fiber in this pool. */
-        size_t stack_size = 0;
-
-        /** Number of fibers in this pool. */
-        size_t fiber_count = 0;
-
-        /** Fibers in this pool. */
-        fiber* fibers = nullptr;
-    };
 
     /** Maximum number of threads pools that can be added. */
     const static size_t max_thread_pools = 16;
@@ -180,11 +199,8 @@ private:
     /** Maximum number of fiber pools that can be added. */
     const static size_t max_fiber_pools = 16;
 
-    /** User-defined memory allocation function. */
-    memory_alloc_function m_user_alloc = default_alloc;
-
-    /** User-defined memory deallocation function. */
-    memory_free_function m_user_free = default_free;  
+    /** User-defined memory allocation functions. */
+	memory_functions m_memory_functions;
 
     /** Maximum number of jobs this scheduler can handle concurrently. */
     size_t m_max_jobs = 0;
@@ -204,6 +220,8 @@ private:
     /** True if this scheduler has been initialized.  */
     bool m_initialized = false;
 
+	/** True if the scheduler is being torn down and threads need to exit. */
+	bool m_destroying = false;
 };
 
 }; /* namespace Jobs */

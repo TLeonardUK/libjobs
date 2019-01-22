@@ -19,44 +19,51 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-/**
- *  \file jobs_job.h
- *
- *  Include header for individual job management functionality.
- */
+#include "jobs_fiber.h"
 
-#ifndef __JOBS_JOB_H__
-#define __JOBS_JOB_H__
-
-#include "jobs_enums.h"
-#include "jobs_scheduler.h"
+#include <cassert>
 
 namespace jobs {
 
-/**
- *  Encapsulates a single job of work that can be executed by a scheduler.
- */
-class job
+fiber::fiber(const memory_functions& memory_functions)
+	: m_memory_functions(memory_functions)
 {
-protected:
+}
 
-	friend class scheduler;
+fiber::~fiber()
+{
+}
 
-	// We only permit the scheduler to instantiate jobs, everywhere else
-	// the jobs must be passed around by reference.
-	job() = delete;
+result fiber::init(size_t stack_size, const fiber_entry_point& entry_point)
+{
+	m_entry_point = entry_point;
 
-	/**
-	 * \brief Constructor.
-	 *
-	 * \param pool_index Index of the job inside the schedulers internal job pool.
-	 */
-	job(int pool_index);
+#ifdef JOBS_PLATFORM_WINDOWS
+	m_fiber_handle = CreateFiberEx(stack_size, stack_size, FIBER_FLAG_FLOAT_SWITCH, trampoline_entry_point, this);
+	if (m_fiber_handle == nullptr)
+	{
+		// Try and figure out some useful results if possible.
+		DWORD error = GetLastError();
+		if (error == ERROR_OUTOFMEMORY)
+		{
+			return result::out_of_memory;
+		}
 
-public:
+		return result::platform_error;
+	}
+#else
+#	error Unimplemented platform
+#endif
 
-};
+	return result::success;
+}
+
+#ifdef JOBS_PLATFORM_WINDOWS
+VOID CALLBACK fiber::trampoline_entry_point(PVOID lpParameter)
+{
+	fiber* this_fiber = reinterpret_cast<fiber*>(GetFiberData());
+	this_fiber->m_entry_point();
+}
+#endif
 
 }; /* namespace Jobs */
-
-#endif /* __JOBS_JOB_H__ */

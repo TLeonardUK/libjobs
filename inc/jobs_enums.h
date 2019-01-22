@@ -47,6 +47,7 @@ enum class result
     already_initialized,    /**< Operation could not be performed as the object has already been initialized. */  
     no_thread_pools,        /**< Scheduler attempted to be initialized with no thread pools defined. */  
     no_fiber_pools,         /**< Scheduler attempted to be initialized with no fiber pools defined. */  
+	platform_error,			/**< A internal platform function call failed for unspecified/unknown reasons. */
 };
 
 /**
@@ -57,12 +58,13 @@ enum class result
  */
 enum class priority
 {
-    slow        = 1 << 0,   /**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */  
-    low         = 1 << 1,   /**< Low priority jobs */  
-    medium      = 1 << 2,   /**< Medium priority jobs */  
-    high        = 1 << 3,   /**< High priority jobs */  
-    critical    = 1 << 4,   /**< Critical priority jobs */  
-    all         = 0xFFFF,   /**< All priorities together. */  
+    slow         = 1 << 0,			/**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */  
+    low          = 1 << 1,			/**< Low priority jobs */  
+    medium       = 1 << 2,			/**< Medium priority jobs */  
+    high         = 1 << 3,			/**< High priority jobs */  
+    critical     = 1 << 4,			/**< Critical priority jobs */  
+    all          = 0xFFFF,			/**< All priorities together. */  
+    all_but_slow = 0xFFFF & ~slow , /**< All priorities together except slow. */  
 };
 
 }; /* namespace Jobs */

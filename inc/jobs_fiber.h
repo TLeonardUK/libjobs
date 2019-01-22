@@ -28,8 +28,19 @@
 #ifndef __JOBS_FIBER_H__
 #define __JOBS_FIBER_H__
 
+#include "jobs_enums.h"
+#include "jobs_platform.h"
+#include "jobs_memory.h"
+
+#include <functional>
+
 namespace jobs {
     
+/**
+ *  \brief Entry point for a fiber.
+ */
+typedef std::function<void()> fiber_entry_point;
+
 /**
  *  Encapsulates a single user-space thread's (aka. coroutine/fiber) context of execution.
  */
@@ -37,7 +48,46 @@ class fiber
 {
 public:
 
+	/**
+	 * Constructor.
+	 *
+	 * \param memory_function Scheduler defined memory functions used to 
+	 *						  override default memory allocation behaviour.
+	 */
+	fiber(const memory_functions& memory_functions);
+
+	/** Destructor. */
+	~fiber();
+
+	/**
+	 * \brief Initializes this fiber.
+	 *
+	 * \param stack_size Size of the stack that should be allocated for this fibers execution context.
+	 * \param entry_point Function that this fiber should start running when executed.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result init(size_t stack_size, const fiber_entry_point& entry_point);
+
 private:
+
+#ifdef JOBS_PLATFORM_WINDOWS
+	/** Trampoline function used to call the user-defined entry point. */
+	static VOID CALLBACK trampoline_entry_point(PVOID lpParameter);
+#endif
+
+private:
+
+	/** Memory allocation functions provided by the scheduler. */
+	memory_functions m_memory_functions;
+
+	/** User defined entry point to execute when the fiber is run. */
+	fiber_entry_point m_entry_point;
+
+#ifdef JOBS_PLATFORM_WINDOWS
+	/** Handle of platform defined fiber. */
+	LPVOID m_fiber_handle;
+#endif
 
 };
 

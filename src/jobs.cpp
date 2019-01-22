@@ -30,11 +30,18 @@ void job_2_work(jobs::job_context& context)
 
 int main()
 {
+	// Defined overidden memory functions.
+	jobs::memory_functions memory_functions;
+	memory_functions.user_alloc = &user_alloc;
+	memory_functions.user_free = &user_free;
+
+	// Create scheduler.
     jobs::scheduler scheduler;    
-    //scheduler.set_memory_functions(&user_alloc, &user_free);
+    scheduler.set_memory_functions(memory_functions);
     scheduler.set_max_jobs(1024);
-    scheduler.add_thread_pool(8, jobs::priority::all);
-    scheduler.add_fiber_pool(200, 64 * 1024);
+	scheduler.add_thread_pool(1, jobs::priority::slow);
+	scheduler.add_thread_pool(7, jobs::priority::all_but_slow);
+    scheduler.add_fiber_pool(100, 64 * 1024);
     scheduler.add_fiber_pool(1000, 1 * 1024);
     scheduler.add_fiber_pool(10, 2 * 1024 * 1024);
 
@@ -42,31 +49,34 @@ int main()
     assert(result == jobs::result::success);
 
 
-    /*
-    scheduler.set_max_jobs(1024);
-    scheduler.add_thread_pool(2, jobs::priority::high);
-    scheduler.add_thread_pool(6, jobs::priority::any);
-    scheduler.add_fiber_pool(128, 128 * 1024);
-    scheduler.add_fiber_pool(16, 2 * 1024 * 1024);
+	// Option 1
+	jobs::job job;
+	job.set_work([=]() { printf("Work Executed!\n"); });
+	job.set_stack_size(5 * 1024);
+	job.set_priority(jobs::priority::low);
+	job.add_dependency(job_handle_2);
 
-    if (scheduler.init() == jobs::result::success)
-    {
-        jobs::job job = scheduler.create_job();
-        job.set_stack_size(5 * 1024);
-        job.set_priority(jobs::priority::low);
-        job.add_dependency(first_job);
+	jobs::job_handle handle = scheduler.queue_job(job);
+	handle.wait();
+	handle.get_status();
 
-        scheduler.queue_job(job);
-        // fire_and_forget_job
-        
-        job.get_status();
-        job.wait();
-    }
-    else
-    {
-        printf("Failed to create scheduler.\n");
-    }
-    */
+	// Option 2
+	jobs::job* job = nullptr;
+
+	result = scheduler.create_job(job);
+	assert(result == jobs::result::success);
+
+	job->set_stack_size(5 * 1024);
+	job->set_priority(jobs::priority::low);
+	//job.add_dependency(first_job);
+
+	scheduler.queue_job(job);
+
+	//job.get_status();
+	//job.wait();
+
+	printf("Press any key to exit ...\n");
+	getchar();
 
 	return 0;
 }

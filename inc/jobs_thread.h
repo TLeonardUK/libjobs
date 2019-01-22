@@ -28,20 +28,20 @@
 #ifndef __JOBS_THREAD_H__
 #define __JOBS_THREAD_H__
 
+#include "jobs_enums.h"
+#include "jobs_memory.h"
+
 #include <thread>
+#include <functional>
 
 namespace jobs {
+
+class thread;
     
 /**
- *  \brief User-defined memory allocation function.
- *
- *  Function prototype that can be passed into a job scheduler through
- *  set_memory_functions to override the default malloc memory allocator.
- *
- *  \param size Size of block of memory to be allocated.
- *  \return Pointer to block of memory that was allocated, or nullptr on failure.
+ *  \brief Entry point for a thread.
  */
-typedef std::function<void(const thread& this_thread, void* meta_data)> thread_entry_point;
+typedef std::function<void()> thread_entry_point;
 
 /**
  *  Encapsulates a thread of execution on the base platform.
@@ -50,12 +50,39 @@ class thread
 {
 public:
 
-    thread(const thread_entry_point& entry_point, void* meta_data);
+	/**
+	 * Constructor.
+	 *
+	 * \param memory_function Scheduler defined memory functions used to 
+	 *						  override default memory allocation behaviour.
+	 */
+    thread(const memory_functions& memory_functions);
+	
+	/** Destructor. */
+	~thread();
+	
+	/**
+	 * \brief Initializes this thread of execution and begins running the thread.
+	 *
+	 * \param entry_point Function that should be run when the thread starts.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result init(const thread_entry_point& entry_point);
 
-    void start();
+	/**
+	 * \brief Blocks until thread completes execution.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
     void join();
 
 private:
+
+	/** Memory allocation functions provided by the scheduler. */
+	memory_functions m_memory_functions;
+
+	/** Thread of execution we are encapsulating */
     std::thread m_thread;
 
 };

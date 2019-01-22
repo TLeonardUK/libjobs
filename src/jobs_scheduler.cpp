@@ -26,16 +26,30 @@
 #include <algorithm>
 
 namespace jobs {
-    
+
+scheduler::scheduler()
+{
+	// Default memory allocation functions.
+	m_memory_functions.user_alloc = default_alloc;
+	m_memory_functions.user_free = default_free;
+}
+
 scheduler::~scheduler()
 {
+	m_destroying = true;
+
     for (size_t i = 0; i < m_thread_pool_count; i++)
     {
         thread_pool& pool = m_thread_pools[i];
 
         if (pool.threads != nullptr)
         {
-            m_user_free(pool.threads);
+			for (int j = 0; j < pool.thread_count; j++)
+			{
+				pool.threads[j].join();
+				pool.threads[j].~thread();
+			}
+            m_memory_functions.user_free(pool.threads);
         }
     }
 
@@ -45,33 +59,33 @@ scheduler::~scheduler()
 
         if (pool.fibers != nullptr)
         {
-            m_user_free(pool.fibers);
+			for (int j = 0; j < pool.fiber_count; j++)
+			{
+				pool.fibers[j].~fiber();
+			}
+            m_memory_functions.user_free(pool.fibers);
         }
     }
 }
 
 void* scheduler::default_alloc(size_t size)
 {
-    void* ptr = malloc(size);
-    printf("Default Allocated: %zi (%p)\n", size, ptr);
-    return ptr;
+    return malloc(size);
 }
 
 void scheduler::default_free(void* ptr)
 {
     free(ptr);
-    printf("Default Freed: %p\n", ptr);
 }
 
-result scheduler::set_memory_functions(const memory_alloc_function& alloc, const memory_free_function& free)
+result scheduler::set_memory_functions(const memory_functions& functions)
 {
     if (m_initialized)
     {
         return result::already_initialized;
     }
 
-    m_user_alloc = alloc;
-    m_user_free = free;
+	m_memory_functions = functions;
 
     return result::success;
 }
@@ -139,6 +153,11 @@ result scheduler::init()
         return result::no_fiber_pools;
     }
 
+	// @todo Might be worth changing this so we can initialize
+	// multiple times if the first time fails for some reason? Would need
+	// to adjust the initialization below so we don't do anything twice.
+	m_initialized = true;
+
     // Allocate threads.
     for (size_t i = 0; i < m_thread_pool_count; i++)
     {
@@ -146,11 +165,25 @@ result scheduler::init()
 
         if (pool.threads == nullptr)
         {
-            pool.threads = static_cast<thread*>(m_user_alloc(sizeof(thread) * pool.thread_count));
+            pool.threads = static_cast<thread*>(m_memory_functions.user_alloc(sizeof(thread) * pool.thread_count));
             if (pool.threads == nullptr)
             {
                 return result::out_of_memory;
             }
+
+			for (int j = 0; j < pool.thread_count; j++)
+			{
+				new(pool.threads + j) thread(m_memory_functions);
+
+				result result = pool.threads[j].init([this, &pool, j]() {
+					worker_entry_point(pool.threads[j], pool);
+				});
+
+				if (result != result::success)
+				{
+					return result;
+				}
+			}
         }
     }
 
@@ -161,11 +194,25 @@ result scheduler::init()
 
         if (pool.fibers == nullptr)
         {
-            pool.fibers = static_cast<fiber*>(m_user_alloc(sizeof(fiber) * pool.fiber_count));
+            pool.fibers = static_cast<fiber*>(m_memory_functions.user_alloc(sizeof(fiber) * pool.fiber_count));
             if (pool.fibers == nullptr)
             {
                 return result::out_of_memory;
             }
+
+			for (int j = 0; j < pool.fiber_count; j++)
+			{
+				new(pool.fibers + j) fiber(m_memory_functions);
+
+				result result = pool.fibers[j].init(pool.stack_size, [this, &pool, j]() {
+					worker_fiber_entry_point(pool.fibers[j]);
+				});
+
+				if (result != result::success)
+				{
+					return result;
+				}
+			}
         }
     }
 
@@ -180,9 +227,49 @@ result scheduler::init()
     };
     std::sort(m_fiber_pools, m_fiber_pools + m_fiber_pool_count, fiber_sorter);
 
-    m_initialized = true;
-
     return result::success;
+}
+
+void scheduler::worker_entry_point(const thread& this_thread, const thread_pool& thread_pool)
+{
+	printf("Worker entered...\n");
+	while (!m_destroying)
+	{
+		execute_next_job(thread_pool.job_priorities, true);
+	}
+}
+
+void scheduler::worker_fiber_entry_point(const fiber& this_fiber)
+{
+	printf("Fiber entered...\n");
+}
+
+// DEBUG DEBUG DEBUG
+#include <Windows.h>
+// DEBUG DEBUG DEBUG
+
+bool scheduler::execute_next_job(priority job_priorities, bool can_block)
+{	
+	/*
+	// Grab next job to run.
+	job work;
+	if (m_jobQueue.get_work(work, job_priorities, can_block))
+	{
+		// If job does not have a fiber allocated, grab a fiber to run job on.
+		if (work.fiber != nullptr)
+		{
+			work.fiber = allocate_fiber(work.required_stack_size);
+		}
+
+		// 
+	}
+	*/
+
+	// DEBUG DEBUG DEBUG
+	Sleep(1);
+	// DEBUG DEBUG DEBUG
+
+	return true;
 }
 
 }; /* namespace Jobs */

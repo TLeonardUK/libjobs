@@ -1,4 +1,4 @@
-﻿/*
+/*
   libjobs - Simple coroutine based job scheduling.
   Copyright (C) 2019 Tim Leonard <me@timleonard.uk>
 
@@ -20,21 +20,24 @@
 */
 
 /**
- *  \file jobs.h
+ *  \file jobs_platform.h
  *
- *  Main include header for the jobs library
+ *  Include header for platform specific defines.
  */
 
-#ifndef __JOBS_H__
-#define __JOBS_H__
+#ifndef __JOBS_PLATFORM_H__
+#define __JOBS_PLATFORM_H__
 
-#include "jobs_enums.h"
-#include "jobs_fiber.h"
-#include "jobs_job.h"
-#include "jobs_memory.h"
-#include "jobs_platform.h"
-#include "jobs_queue.h"
-#include "jobs_scheduler.h"
-#include "jobs_thread.h"
+#if defined(_WIN32)
+#	define JOBS_PLATFORM_WINDOWS 1
+#else
+#	error Unknown or unimplemented platform
+#endif
 
-#endif /* __JOBS_H__ */
+#ifdef JOBS_PLATFORM_WINDOWS
+#	define WIN32_LEAN_AND_MEAN  1
+#	define VC_EXTRALEAN 1
+#	include <Windows.h>
+#endif
+
+#endif /* __JOBS_MEMORY_H__ */

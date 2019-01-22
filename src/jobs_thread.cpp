@@ -1,4 +1,4 @@
-﻿/*
+/*
   libjobs - Simple coroutine based job scheduling.
   Copyright (C) 2019 Tim Leonard <me@timleonard.uk>
 
@@ -19,22 +19,34 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-/**
- *  \file jobs.h
- *
- *  Main include header for the jobs library
- */
-
-#ifndef __JOBS_H__
-#define __JOBS_H__
-
-#include "jobs_enums.h"
-#include "jobs_fiber.h"
-#include "jobs_job.h"
-#include "jobs_memory.h"
-#include "jobs_platform.h"
-#include "jobs_queue.h"
-#include "jobs_scheduler.h"
 #include "jobs_thread.h"
 
-#endif /* __JOBS_H__ */
+#include <cassert>
+
+namespace jobs {
+
+thread::thread(const memory_functions& memory_functions)
+	: m_memory_functions(memory_functions)
+{
+}
+
+thread::~thread()
+{
+}
+
+result thread::init(const thread_entry_point& entry_point)
+{
+	std::thread new_thread(entry_point);
+	m_thread.swap(new_thread);
+
+	assert(m_thread.joinable());
+
+	return result::success;
+}
+
+void thread::join()
+{
+	m_thread.join();
+}
+
+}; /* namespace Jobs */

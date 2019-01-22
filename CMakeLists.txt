@@ -51,6 +51,9 @@ include_directories(${CMAKE_SOURCE_DIR}/inc)
 add_executable(libjobs
 	"src/jobs.cpp"
 	"src/jobs_scheduler.cpp"
+	"src/jobs_thread.cpp"
+	"src/jobs_fiber.cpp"
+	"src/jobs_queue.cpp"
 )
 
 # If in debug suffix _d to the output name.
