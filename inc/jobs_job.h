@@ -32,6 +32,11 @@
 #include "jobs_scheduler.h"
 
 namespace jobs {
+	
+/**
+ *  \brief Entry point for a jobs workload.
+ */
+typedef std::function<void()> job_entry_point;
 
 /**
  *  Encapsulates a single job of work that can be executed by a scheduler.
@@ -54,6 +59,12 @@ protected:
 	job(int pool_index);
 
 public:
+
+	void set_work(const job_entry_point& job_work);
+	void set_stack_size(size_t stack_size);
+	void set_priority(priority job_priority);
+	void add_dependency(job* other);
+
 
 };
 
