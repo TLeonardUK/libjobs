@@ -37,35 +37,6 @@ scheduler::scheduler()
 scheduler::~scheduler()
 {
 	m_destroying = true;
-
-    for (size_t i = 0; i < m_thread_pool_count; i++)
-    {
-        thread_pool& pool = m_thread_pools[i];
-
-        if (pool.threads != nullptr)
-        {
-			for (int j = 0; j < pool.thread_count; j++)
-			{
-				pool.threads[j].join();
-				pool.threads[j].~thread();
-			}
-            m_memory_functions.user_free(pool.threads);
-        }
-    }
-
-    for (size_t i = 0; i < m_fiber_pool_count; i++)
-    {
-        fiber_pool& pool = m_fiber_pools[i];
-
-        if (pool.fibers != nullptr)
-        {
-			for (int j = 0; j < pool.fiber_count; j++)
-			{
-				pool.fibers[j].~fiber();
-			}
-            m_memory_functions.user_free(pool.fibers);
-        }
-    }
 }
 
 void* scheduler::default_alloc(size_t size)
@@ -163,71 +134,70 @@ result scheduler::init()
     {
         thread_pool& pool = m_thread_pools[i];
 
-        if (pool.threads == nullptr)
-        {
-            pool.threads = static_cast<thread*>(m_memory_functions.user_alloc(sizeof(thread) * pool.thread_count));
-            if (pool.threads == nullptr)
-            {
-                return result::out_of_memory;
-            }
+		result result = pool.pool.init(m_memory_functions, pool.thread_count, [&](thread* instance, int index) 
+		{
+			new(instance) thread(m_memory_functions);
 
-			for (int j = 0; j < pool.thread_count; j++)
+			return instance->init([&]() 
 			{
-				new(pool.threads + j) thread(m_memory_functions);
+				worker_entry_point(*instance, pool);
+			});
+		});
 
-				result result = pool.threads[j].init([this, &pool, j]() {
-					worker_entry_point(pool.threads[j], pool);
-				});
-
-				if (result != result::success)
-				{
-					return result;
-				}
-			}
-        }
+		if (result != result::success)
+		{
+			return result;
+		}
     }
 
     // Allocate fibers.
     for (size_t i = 0; i < m_fiber_pool_count; i++)
     {
         fiber_pool& pool = m_fiber_pools[i];
+		m_fiber_pools_sorted_by_stack[i] = &pool;
 
-        if (pool.fibers == nullptr)
-        {
-            pool.fibers = static_cast<fiber*>(m_memory_functions.user_alloc(sizeof(fiber) * pool.fiber_count));
-            if (pool.fibers == nullptr)
-            {
-                return result::out_of_memory;
-            }
+		result result = pool.pool.init(m_memory_functions, pool.fiber_count, [&](fiber* instance, int index) 
+		{
+			new(instance) fiber(m_memory_functions);
 
-			for (int j = 0; j < pool.fiber_count; j++)
+			return instance->init(pool.stack_size, [&]() 
 			{
-				new(pool.fibers + j) fiber(m_memory_functions);
+				worker_fiber_entry_point(*instance);
+			});
+		});
 
-				result result = pool.fibers[j].init(pool.stack_size, [this, &pool, j]() {
-					worker_fiber_entry_point(pool.fibers[j]);
-				});
-
-				if (result != result::success)
-				{
-					return result;
-				}
-			}
-        }
+		if (result != result::success)
+		{
+			return result;
+		}
     }
 
     // Allocate jobs.
-    // todo
+	result result = m_job_pool.init(m_memory_functions, m_max_jobs, [](job* instance, int index)
+	{
+		new(instance) job(index);
+		return result::success;
+	});
+
+	if (result != result::success)
+	{
+		return result;
+	}
 
     // Sort fiber pools by stack size, smallest to largest, saves
     // redundent iteration when looking for smallest fitting stack size.
-    auto fiber_sorter = [](const scheduler::fiber_pool& lhs, const scheduler::fiber_pool& rhs) 
+    auto fiber_sort_predicate = [](const scheduler::fiber_pool* lhs, const scheduler::fiber_pool* rhs) 
     {
-        return lhs.stack_size < rhs.stack_size;
+        return lhs->stack_size < rhs->stack_size;
     };
-    std::sort(m_fiber_pools, m_fiber_pools + m_fiber_pool_count, fiber_sorter);
+    std::sort(m_fiber_pools_sorted_by_stack, m_fiber_pools_sorted_by_stack + m_fiber_pool_count, fiber_sort_predicate);
 
     return result::success;
+}
+
+result scheduler::create_job(job*& instance)
+{
+	return m_job_pool.alloc(instance);
 }
 
 void scheduler::worker_entry_point(const thread& this_thread, const thread_pool& thread_pool)

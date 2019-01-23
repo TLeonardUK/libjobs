@@ -19,35 +19,15 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-#include "jobs_thread.h"
+#include "jobs_job.h"
 
 #include <cassert>
 
 namespace jobs {
 
-thread::thread(const memory_functions& memory_functions)
-	: m_memory_functions(memory_functions)
+job::job(size_t pool_index)
+	: m_pool_index(pool_index)
 {
-}
-
-thread::~thread()
-{
-	join();
-}
-
-result thread::init(const thread_entry_point& entry_point)
-{
-	std::thread new_thread(entry_point);
-	m_thread.swap(new_thread);
-
-	assert(m_thread.joinable());
-
-	return result::success;
-}
-
-void thread::join()
-{
-	m_thread.join();
 }
 
 }; /* namespace Jobs */

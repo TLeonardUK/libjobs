@@ -42,6 +42,7 @@ enum class result
     out_of_memory,          /**< Could not allocate enough memory to fulfil request. */  
     out_of_jobs,            /**< Could not allocate a free job instance to fulfil request. */  
     out_of_fibers,          /**< Could not allocate a free fiber instance to fulfil request. */  
+	out_of_objects,			/**< Could not allocate a free object instance to fulfil request. */  
     maximum_exceeded,       /**< Maximum number of resources that can be registered/added has been exceeded. */  
     already_set,            /**< A value has already been set and cannot be set multiple times. */  
     already_initialized,    /**< Operation could not be performed as the object has already been initialized. */  

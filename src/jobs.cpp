@@ -48,7 +48,7 @@ int main()
     jobs::result result = scheduler.init();
     assert(result == jobs::result::success);
 
-
+/*
 	// Option 1
 	jobs::job job;
 	job.set_work([=]() { printf("Work Executed!\n"); });
@@ -78,25 +78,37 @@ int main()
 
 	handle.wait();
 	handle.get_status();
+*/
 
-
-	// Option 3
-	jobs::job* job = nullptr;
-
-	result = scheduler.create_job(job);
+	// Job 1
+	jobs::job_handle job1;
+	result = scheduler.create_job(job1);
 	assert(result == jobs::result::success);
 
-	job->set_work([=]() { printf("Work Executed!\n"); });
-	job->set_stack_size(5 * 1024);
-	job->set_priority(jobs::priority::low);
-	job->add_dependency(first_job);
+	job1.set_work([=]() { printf("Job 1 executed\n"); });
+	job1.set_stack_size(5 * 1024);
+	job1.set_priority(jobs::priority::low);
 
-	job->dispatch();
+	// Job 2
+	jobs::job_handle job2;
+	result = scheduler.create_job(job2);
+	assert(result == jobs::result::success);
 
-	job->get_status();
-	job->wait();
+	job2.set_work([=]() { printf("Job 2 executed\n"); });
+	job2.set_stack_size(5 * 1024);
+	job2.set_priority(jobs::priority::low);
+	job2.add_predecessor(job1);
 
+	// Dispatch and wait
+	job1.dispatch();
+	job2.dispatch();
 
+	job2.wait();
+	
+	//job->get_status();
+	//job->wait();
+
+/*
 	// Option 4
 	jobs::job job;
 	job.set_stack_size(5 * 1024);
@@ -111,7 +123,7 @@ int main()
 	scheduler.is_job_complete();
 	scheduler.is_idle();
 	scheduler.wait_for_completion();
-
+*/
 
 	printf("Press any key to exit ...\n");
 	getchar();

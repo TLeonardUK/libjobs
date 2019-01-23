@@ -30,6 +30,7 @@
 
 #include "jobs_enums.h"
 #include "jobs_memory.h"
+#include "jobs_job.h"
 
 #include <functional>
 
@@ -37,6 +38,7 @@ namespace jobs {
     
 class thread;
 class fiber;
+class job;
 
 /**
  *  The scheduler is the heart of the library. Its responsible for managing the 
@@ -137,7 +139,10 @@ public:
 	 *
 	 * \return Value indicating the success of this function.
 	 */
-	result queue_job(job* instance);
+	//result dispatch_job(job* instance);
+
+	/** @todo */
+	//bool wait_until_idle();
 
 private:
 
@@ -150,8 +155,8 @@ private:
 		/** Number of threads in this pool. */
 		size_t thread_count = 0;
 
-		/** Threads in this pool. */
-		thread* threads = nullptr;
+		/** Pool of threads. */
+		fixed_pool<thread> pool;
 	};
 
 	/** Internal representation of a fiber pool. */
@@ -163,8 +168,8 @@ private:
 		/** Number of fibers in this pool. */
 		size_t fiber_count = 0;
 
-		/** Fibers in this pool. */
-		fiber* fibers = nullptr;
+		/** Pool of fibers. */
+		fixed_pool<fiber> pool;
 	};
 
 private:
@@ -217,11 +222,18 @@ private:
     /** Array of fiber pools that have been added. */
     fiber_pool m_fiber_pools[max_fiber_pools];
 
+	/** Array of pointers to fiber pools, sorted by stack size */
+	fiber_pool* m_fiber_pools_sorted_by_stack[max_fiber_pools];
+
     /** True if this scheduler has been initialized.  */
     bool m_initialized = false;
 
 	/** True if the scheduler is being torn down and threads need to exit. */
 	bool m_destroying = false;
+
+	/** Pool of jobs that can be allocated. */
+	fixed_pool<job> m_job_pool;
+
 };
 
 }; /* namespace Jobs */

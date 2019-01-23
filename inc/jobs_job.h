@@ -39,6 +39,88 @@ namespace jobs {
 typedef std::function<void()> job_entry_point;
 
 /**
+ * Encapsulates all the settings required to dispatch and run an instance of a job.
+ */
+class job_definition
+{
+public:
+
+};
+
+/**
+ * \brief Represents an instance of a job that has been created by the scheduler.
+ *
+ * Job data is owned by the scheduler, be careful accessing handles if 
+ * the scheduler has been destroyed.
+ */
+class job_handle
+{
+public:
+
+	// @todo: these are just stubs that will update the definition held by the scheduler.
+
+	job_handle();
+
+	job_handle(const job_handle& other);
+
+	~job_handle();
+
+	job_handle& operator=(const job_handle& other);
+
+	/** @todo */
+	void set_work(const job_entry_point& job_work);
+
+	/** @todo */
+	void set_stack_size(size_t stack_size);
+
+	/** @todo */
+	void set_priority(priority job_priority);
+
+	/** @todo */
+	void clear_dependencies();
+
+	/** @todo */
+	void add_predecessor(job_handle other);
+
+	/** @todo */
+	//void add_predecessor(event* other);
+
+	/** @todo */
+	void add_successor(job_handle other);
+
+	/** @todo */
+	//void add_successor(event* other);
+
+	/** @todo */
+	bool is_pending();
+
+	/** @todo */
+	bool is_running();
+
+	/** @todo */
+	bool is_complete();
+
+	/** @todo */
+	bool is_valid();
+
+	/** @todo */
+	bool wait(timeout = timeout::infinite);
+
+	/** @todo */
+	void dispatch();
+
+private:
+
+	/** Pointer to the owning scheduler of this handle. */
+	scheduler* m_scheduler;
+
+	/** @todo */
+	size_t m_index;
+
+};
+
+#if 0
+/**
  *  Encapsulates a single job of work that can be executed by a scheduler.
  */
 class job
@@ -56,17 +138,29 @@ protected:
 	 *
 	 * \param pool_index Index of the job inside the schedulers internal job pool.
 	 */
-	job(int pool_index);
+	job(size_t pool_index);
 
 public:
 
+	/** */
 	void set_work(const job_entry_point& job_work);
+
+	/** */
 	void set_stack_size(size_t stack_size);
+
+	/** */
 	void set_priority(priority job_priority);
+
+	/** */
 	void add_dependency(job* other);
 
+private:
+
+	/** */
+	size_t m_pool_index;
 
 };
+#endif
 
 }; /* namespace Jobs */
 
