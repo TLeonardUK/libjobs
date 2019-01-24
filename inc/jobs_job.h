@@ -36,6 +36,7 @@
 namespace jobs {
 	
 class job_dependency;
+class fiber;
 
 /**
  *  \brief Entry point for a jobs workload.
@@ -89,6 +90,18 @@ public:
 
 	/** @todo */
 	bool has_successors;
+
+	/** @todo */
+	bool has_fiber = false;
+
+	/** @todo */
+	size_t fiber_index;
+
+	/** @todo */
+	size_t fiber_pool_index;
+
+	/** @todo */
+	size_t queues_contained_in;
 
 };
 
@@ -167,7 +180,7 @@ public:
 	bool is_valid();
 
 	/** @todo */
-	result wait(timeout in_timeout = timeout::infinite, priority assist_on_tasks = priority::all_but_slow);
+	result wait(timeout in_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
 	/** @todo */
 	result dispatch();

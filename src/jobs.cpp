@@ -14,6 +14,11 @@ void user_free(void* ptr)
 
 void debug_output(jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
 {
+	if (level == jobs::debug_log_verbosity::verbose)
+	{
+		// Do not care about this ...
+		return;
+	}
 	printf("%s", message);
 	OutputDebugStringA(message);
 }
@@ -42,7 +47,8 @@ int main()
     jobs::scheduler scheduler;    
 	scheduler.set_debug_output(debug_output);
     scheduler.set_memory_functions(memory_functions);
-    scheduler.set_max_jobs(1024);
+    scheduler.set_max_jobs(10001);
+	scheduler.set_max_dependencies(10001);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
 	scheduler.add_thread_pool(7, jobs::priority::all_but_slow);
     scheduler.add_fiber_pool(100, 64 * 1024);
@@ -61,14 +67,14 @@ int main()
 	job1.set_stack_size(5 * 1024);
 	job1.set_priority(jobs::priority::low);
 
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < 10000; i++)
 	{
 		// Job 2
 		jobs::job_handle job2;
 		result = scheduler.create_job(job2);
 		assert(result == jobs::result::success);
 
-		job2.set_work([=]() { printf("Sub-job executed\n"); });
+		job2.set_work([=]() { printf("Sub-job executed %i\n", i); });
 		job2.set_stack_size(5 * 1024);
 		job2.set_priority(jobs::priority::low);
 

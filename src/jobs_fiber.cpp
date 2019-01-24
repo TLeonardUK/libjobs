@@ -25,6 +25,10 @@
 
 namespace jobs {
 
+fiber::fiber()
+{
+}
+
 fiber::fiber(const memory_functions& memory_functions)
 	: m_memory_functions(memory_functions)
 {
@@ -51,6 +55,40 @@ result fiber::init(size_t stack_size, const fiber_entry_point& entry_point)
 
 		return result::platform_error;
 	}
+#else
+#	error Unimplemented platform
+#endif
+
+	return result::success;
+}
+
+fiber fiber::convert_thread_to_fiber()
+{
+	fiber new_fiber;
+	new_fiber.m_entry_point = nullptr;
+
+#ifdef JOBS_PLATFORM_WINDOWS
+	new_fiber.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);;
+#else
+#	error Unimplemented platform
+#endif
+
+	return new_fiber;
+}
+
+void fiber::convert_fiber_to_thread()
+{
+#ifdef JOBS_PLATFORM_WINDOWS
+	ConvertFiberToThread();
+#else
+#	error Unimplemented platform
+#endif
+}
+
+result fiber::switch_to()
+{
+#ifdef JOBS_PLATFORM_WINDOWS
+	SwitchToFiber(m_fiber_handle);
 #else
 #	error Unimplemented platform
 #endif

@@ -49,6 +49,11 @@ class fiber
 public:
 
 	/**
+	 * Default constructor.
+	 */
+	fiber();
+
+	/**
 	 * Constructor.
 	 *
 	 * \param memory_function Scheduler defined memory functions used to 
@@ -68,6 +73,31 @@ public:
 	 * \return Value indicating the success of this function.
 	 */
 	result init(size_t stack_size, const fiber_entry_point& entry_point);
+
+	/**
+	 * \brief Switches this threads execution context to this fiber.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result switch_to();
+
+	/**
+	 * \brief Converts the current thread to a fiber.
+	 * 
+	 *  On some operating systems (notably windows) fibers can only be run by other fibers.
+	 *  so any worker threads dealing with fibers need to first be converted. Which is done using
+	 *  this function.
+	 */
+	static fiber convert_thread_to_fiber();
+
+
+	/**
+	 * \brief Converts the current fiber to a thread.
+	 *
+	 *  This performs the inverse of convert_thread_to_fiber and should be invoked when the thread
+	 *  has finished performing any fiber operations.
+	 */
+	static void convert_fiber_to_thread();
 
 private:
 

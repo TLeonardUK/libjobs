@@ -29,6 +29,10 @@
 
 namespace jobs {
 
+thread_local fiber scheduler::m_worker_fiber;
+thread_local size_t scheduler::m_worker_job_index = 0;
+thread_local bool scheduler::m_worker_job_completed = false;
+
 scheduler::scheduler()
 {
 	// Default memory allocation functions.
@@ -220,7 +224,7 @@ result scheduler::init()
 		{
 			new(instance) fiber(m_memory_functions);
 
-			return instance->init(pool.stack_size, [&]() 
+			return instance->init(pool.stack_size, [=]() 
 			{
 				worker_fiber_entry_point(i, index, *instance);
 			});
@@ -299,10 +303,13 @@ result scheduler::create_job(job_handle& instance)
 	result res = m_job_pool.alloc(index);
 	if (res != result::success)
 	{
+		write_log(debug_log_verbosity::warning, debug_log_group::job, "attempt to create job, but job pool is empty. Try increasing scheduler::set_max_jobs.");
 		return res;
 	}
 
-	write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle allocated, index=%zi", index);
+	job_definition& def = get_job_definition(index);
+
+	write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle allocated, index=%zi ptr=0x%08x", index, &def);
 
 	instance = job_handle(this, index);
 	return result::success;
@@ -311,10 +318,15 @@ result scheduler::create_job(job_handle& instance)
 void scheduler::free_job(size_t index)
 {
 	job_definition& def = get_job_definition(index);
+	if (def.has_fiber)
+	{
+		free_fiber(def.fiber_index, def.fiber_pool_index);
+		def.has_fiber = false;
+	}
 	clear_job_dependencies(index);
 	def.reset();
 
-	write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle freed, index=%zi", index);
+	write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle freed, index=%zi ptr=0x%08x", index, &def);
 
 	m_job_pool.free(index);
 }
@@ -322,13 +334,15 @@ void scheduler::free_job(size_t index)
 void scheduler::increase_job_ref_count(size_t index)
 {
 	job_definition& def = get_job_definition(index);
-	def.ref_count++;
+	size_t new_ref_count = ++def.ref_count;
+	//write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle ++, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
 }
 
 void scheduler::decrease_job_ref_count(size_t index)
 {
 	job_definition& def = get_job_definition(index);
 	size_t new_ref_count = --def.ref_count;
+	//write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle --, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
 	if (new_ref_count == 0)
 	{
 		free_job(index);
@@ -364,6 +378,7 @@ result scheduler::add_job_dependency(size_t successor, size_t predecessor)
 	result res = m_job_dependency_pool.alloc(dependency_index);
 	if (res != result::success)
 	{
+		write_log(debug_log_verbosity::warning, debug_log_group::job, "attempt to add job dependency, but dependency pool is empty, if unhandled may cause incorrect job ordering behaviour. Try increasing scheduler::set_max_dependencies.");
 		return res;
 	}
 
@@ -403,6 +418,9 @@ void scheduler::write_log(debug_log_verbosity level, debug_log_group group, cons
 
 void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const thread& this_thread, const thread_pool& thread_pool)
 {
+	m_worker_fiber = fiber::convert_thread_to_fiber();
+	m_worker_job_index = 0;
+
 	write_log(debug_log_verbosity::verbose, debug_log_group::worker, "worker started, pool=%zi worker=%zi priorities=0x%08x", pool_index, worker_index, thread_pool.job_priorities);
 
 	while (!m_destroying)
@@ -411,13 +429,28 @@ void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const
 	}
 
 	write_log(debug_log_verbosity::verbose, debug_log_group::worker, "worker terminated, pool=%zi worker=%zi", pool_index, worker_index);
+
+	fiber::convert_fiber_to_thread();
 }
 
 void scheduler::worker_fiber_entry_point(size_t pool_index, size_t worker_index, const fiber& this_fiber)
 {
 	write_log(debug_log_verbosity::verbose, debug_log_group::worker, "fiber started, pool=%zi worker=%zi", pool_index, worker_index);
 
-	// @todo
+	while (true)
+	{
+		job_definition& def = get_job_definition(m_worker_job_index);
+
+		// Execute the job assigned to this thread.
+		write_log(debug_log_verbosity::verbose, debug_log_group::job, "executing job, index=%zi", m_worker_job_index);
+
+		m_worker_job_completed = false;
+		def.work();
+		m_worker_job_completed = true;
+
+		// Switch back to the main worker thread fiber.
+		m_worker_fiber.switch_to();				
+	}
 
 	write_log(debug_log_verbosity::verbose, debug_log_group::worker, "fiber terminated, pool=%zi worker=%zi", pool_index, worker_index);
 }
@@ -444,6 +477,7 @@ result scheduler::dispatch_job(size_t index)
 	// Jobs always get an extra ref count until they are complete so they don't get freed while running.
 	increase_job_ref_count(index);
 	def.status = job_status::pending;
+	def.queues_contained_in = 0;
 
 	// Keep track of number of active jobs for idle monitoring. 
 	m_active_job_count++;
@@ -461,6 +495,8 @@ result scheduler::dispatch_job(size_t index)
 
 			size_t write_index = m_pending_job_queues[i].pending_job_count++;
 			m_pending_job_queues[i].pending_job_indicies[write_index] = index;
+
+			def.queues_contained_in |= mask;
 		}
 	}
 
@@ -470,7 +506,36 @@ result scheduler::dispatch_job(size_t index)
 	return result::success;
 }
 
-bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& queue)
+result scheduler::requeue_job(size_t index)
+{
+	std::unique_lock<std::mutex> lock(m_task_available_mutex);
+
+	job_definition& def = get_job_definition(index);
+
+	def.status = job_status::pending;
+
+	// Put job into a job queue for each priority it holds (not sure why you would want multiple priorities, but might as well support it ...).
+	for (size_t i = 0; i < (int)priority::count; i++)
+	{
+		size_t mask = 1i64 << i;
+
+		if (((size_t)def.job_priority & mask) != 0 && (def.queues_contained_in & mask) == 0)
+		{
+			// We should only be able to allocate max_jobs jobs, and each one can only be dispatched 
+			// at most once at a time. So we should never run out of space in any queues ...
+			assert(m_pending_job_queues[i].pending_job_count < m_max_jobs);
+
+			size_t write_index = m_pending_job_queues[i].pending_job_count++;
+			m_pending_job_queues[i].pending_job_indicies[write_index] = index;
+
+			def.queues_contained_in |= mask;
+		}
+	}
+
+	return result::success;
+}
+
+bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& queue, size_t queue_mask)
 {
 	bool shifted_last_iteration = false;
 
@@ -524,6 +589,9 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 			queue.pending_job_indicies[i] = queue.pending_job_indicies[queue.pending_job_count - 1];
 			queue.pending_job_count--;
 
+			// Remove marker saying we are in this queue.
+			def.queues_contained_in &= ~queue_mask;
+
 			// Next iteration we stay on the same index to check the new job we just placed in it.
 		}
 		else if (shift_job_to_back)
@@ -574,7 +642,7 @@ bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_bl
 
 			if (((size_t)priorities & mask) != 0)
 			{
-				if (get_next_job_from_queue(job_index, m_pending_job_queues[i]))
+				if (get_next_job_from_queue(job_index, m_pending_job_queues[i], mask))
 				{
 					return true;
 				}
@@ -596,9 +664,16 @@ void scheduler::complete_job(size_t job_index)
 {
 	job_definition& def = get_job_definition(job_index);
 
+	bool has_successors = def.has_successors;
+
 	def.status = job_status::completed;
 
-	bool has_successors = def.has_successors;
+	// Clear up the fiber now, even if our handle is going to hang around for a while.
+	if (def.has_fiber)
+	{
+		free_fiber(def.fiber_index, def.fiber_pool_index);
+		def.has_fiber = false;
+	}
 
 	// Remove the ref count we added on dispatch.
 	decrease_job_ref_count(job_index);
@@ -629,25 +704,93 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
 		job_definition& def = get_job_definition(job_index);
 
 		// If job does not have a fiber allocated, grab a fiber to run job on.
-		//if (work.fiber != nullptr)
-		//{
-			//work.fiber = allocate_fiber(work.required_stack_size);
-		//}
+		if (!def.has_fiber)
+		{
+			result res = allocate_fiber(def.stack_size, def.fiber_index, def.fiber_pool_index);
+			if (res == result::success)
+			{
+				def.has_fiber = true;
+			}
+			else
+			{
+				write_log(debug_log_verbosity::verbose, debug_log_group::job, "requeuing job as no fibers available, index=%zi", job_index);
 
-		// @todo: do properly.
-		write_log(debug_log_verbosity::verbose, debug_log_group::job, "executing job, index=%zi", job_index);
-		def.work();
+				// No fiber available? Back into the queue you go.
+				requeue_job(job_index);
 
-		// Mark as completed.
-		complete_job(job_index);
+				// There is further work to do so return true here.
+				return true;
+			}
+		}
 
+		// To to switcharoo to fiber land.
+		m_worker_job_index = job_index;
+		fiber* job_fiber = m_fiber_pools_sorted_by_stack[def.fiber_pool_index]->pool.get_index(def.fiber_index);
+		job_fiber->switch_to();
+
+		// If not complete yet, requeue, we probably have some sync point/dependencies to deal with.
+		if (!m_worker_job_completed)
+		{
+			// No fiber available? Back into the queue you go.
+			requeue_job(job_index);
+
+			// There is further work to do so return true here.
+			return true;		
+		}
+		// Else mark as completed.
+		else
+		{
+			complete_job(m_worker_job_index);
+		}
+		
 		return true;
 	}
 
 	return false;
 }
 
-result scheduler::wait_until_idle(timeout wait_timeout, priority assist_on_tasks)
+result scheduler::allocate_fiber(size_t required_stack_size, size_t& fiber_index, size_t& fiber_pool_index)
+{
+	bool any_suitable_pools = false;
+
+	for (size_t i = 0; i < m_fiber_pool_count; i++)
+	{
+		fiber_pool& pool = *m_fiber_pools_sorted_by_stack[i];
+		if (pool.stack_size >= required_stack_size)
+		{
+			any_suitable_pools = true;
+
+			result res = pool.pool.alloc(fiber_index);
+			if (res == result::success)
+			{
+				write_log(debug_log_verbosity::verbose, debug_log_group::job, "fiber allocated, pool=%zi index=%zi", i, fiber_index);
+
+				fiber_pool_index = i;
+				return result::success;
+			}
+		}
+	}
+
+	if (!any_suitable_pools)
+	{
+		write_log(debug_log_verbosity::error, debug_log_group::job, "no fiber pools have large enough stack size to fulfil request for of %zi. job will never complete.", required_stack_size);
+		return result::maximum_exceeded;
+	}
+	else
+	{
+		return result::out_of_fibers;
+	}
+}
+
+result scheduler::free_fiber(size_t fiber_index, size_t fiber_pool_index)
+{
+	fiber_pool& pool = *m_fiber_pools_sorted_by_stack[fiber_pool_index];
+	write_log(debug_log_verbosity::verbose, debug_log_group::job, "fiber freed, pool=%zi index=%zi", fiber_pool_index, fiber_index);
+	pool.pool.free(fiber_index);
+	return result::success;
+}
+
+result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_tasks)
 {
 	stopwatch timer;
 	timer.start();
@@ -659,7 +802,9 @@ result scheduler::wait_until_idle(timeout wait_timeout, priority assist_on_tasks
 			return result::timeout;
 		}
 
+#if 0 // Not supported right now as helper thread must be converted to a fiber.
 		if (!execute_next_job(assist_on_tasks, false))
+#endif
 		{
 			std::unique_lock<std::mutex> lock(m_task_complete_mutex);
 			
@@ -688,7 +833,7 @@ result scheduler::wait_until_idle(timeout wait_timeout, priority assist_on_tasks
 	return result::success;
 }
 
-result scheduler::wait_for_job(job_handle job_handle, timeout wait_timeout, priority assist_on_tasks)
+result scheduler::wait_for_job(job_handle job_handle, timeout wait_timeout)//, priority assist_on_tasks)
 {
 	stopwatch timer;
 	timer.start();
@@ -700,7 +845,9 @@ result scheduler::wait_for_job(job_handle job_handle, timeout wait_timeout, prio
 			return result::timeout;
 		}
 
+#if 0 // Not supported right now as helper thread must be converted to a fiber.
 		if (!execute_next_job(assist_on_tasks, false))
+#endif
 		{
 			std::unique_lock<std::mutex> lock(m_task_complete_mutex);
 

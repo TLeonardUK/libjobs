@@ -38,9 +38,11 @@ void job_definition::reset()
 	job_priority = priority::medium;
 	status = job_status::initialized;
 	has_successors = false;
+	queues_contained_in = 0;
 
 	// Should have been cleaned up by scheduler at this point ...
 	assert(first_dependency == nullptr);
+	assert(has_fiber == false);
 }
 
 job_handle::job_handle(scheduler* scheduler, size_t index)
@@ -235,14 +237,14 @@ bool job_handle::is_valid()
 	return (m_scheduler != nullptr);
 }
 
-result job_handle::wait(timeout in_timeout, priority assist_on_tasks)
+result job_handle::wait(timeout in_timeout)// , priority assist_on_tasks)
 {
 	if (!is_valid())
 	{
 		return result::invalid_handle;
 	}
 
-	return m_scheduler->wait_for_job(*this, in_timeout, assist_on_tasks);
+	return m_scheduler->wait_for_job(*this, in_timeout);// , assist_on_tasks);
 }
 
 result job_handle::dispatch()

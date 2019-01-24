@@ -168,7 +168,7 @@ public:
 	result create_job(job_handle& instance);
 
 	/** @todo */
-	result wait_until_idle(timeout wait_timeout = timeout::infinite, priority assist_on_tasks = priority::all_but_slow);
+	result wait_until_idle(timeout wait_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
 	/** @todo */
 	bool is_idle() const;
@@ -231,16 +231,19 @@ protected:
 	result dispatch_job(size_t index);
 
 	/** @todo */
+	result requeue_job(size_t index);
+
+	/** @todo */
 	bool get_next_job(size_t& job_index, priority priorities, bool can_block);
 
 	/** @todo */
-	bool get_next_job_from_queue(size_t& job_index, job_queue& queue);
+	bool get_next_job_from_queue(size_t& job_index, job_queue& queue, size_t queue_mask);
 
 	/** @todo */
 	void complete_job(size_t job_index);
 
 	/** @todo */
-	result wait_for_job(job_handle job_handle, timeout wait_timeout = timeout::infinite, priority assist_on_tasks = priority::all_but_slow);
+	result wait_for_job(job_handle job_handle, timeout wait_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
 	/** @todo */
 	void write_log(debug_log_verbosity level, debug_log_group group, const char* message, ...);
@@ -250,6 +253,15 @@ protected:
 
 	/** @todo */
 	result add_job_dependency(size_t successor, size_t predecessor);
+
+	/** @todo */
+	void allocate_job(size_t index);
+
+	/** @todo */
+	result allocate_fiber(size_t required_stack_size, size_t& fiber_index, size_t& fiber_pool_index);
+
+	/** @todo */
+	result free_fiber(size_t fiber_index, size_t fiber_pool_index);
 
 private:
 
@@ -357,6 +369,15 @@ private:
 
 	/** Pool of dependencies to be allocated. */
 	fixed_pool<job_dependency> m_job_dependency_pool;
+
+	/** Thread local storage for a worker threads main fiber. */
+	static thread_local fiber m_worker_fiber;
+
+	/** Thread local storage for a worker threads current job. */
+	static thread_local size_t m_worker_job_index;
+
+	/** Thread local storage for flagging of job completed */
+	static thread_local bool m_worker_job_completed;
 };
 
 }; /* namespace Jobs */
