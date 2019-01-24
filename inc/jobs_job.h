@@ -28,22 +28,67 @@
 #ifndef __JOBS_JOB_H__
 #define __JOBS_JOB_H__
 
+#include <atomic>
+
 #include "jobs_enums.h"
 #include "jobs_scheduler.h"
 
 namespace jobs {
 	
+class job_dependency;
+
 /**
  *  \brief Entry point for a jobs workload.
  */
 typedef std::function<void()> job_entry_point;
 
 /**
- * Encapsulates all the settings required to dispatch and run an instance of a job.
+ *  \brief Current status of a job.
+ */
+enum class job_status
+{
+	initialized,	/**< Job is initialized and ready for dispatch */
+	pending,		/**< Job is pending execution */
+	running,		/**< Job is running on a worker */
+	completed,		/**< Job has completed running */
+};
+
+/**
+ * Encapsulates all the settings required to dispatch and run an instance of a job. This
+ * is used for internal storage, and shouldn't ever need to be touched by outside code.
  */
 class job_definition
 {
 public:
+
+	/** @todo */
+	job_definition();
+
+	/** @todo */
+	void reset();
+
+public:	
+
+	/** @todo */
+	std::atomic<size_t> ref_count;
+
+	/** @todo */
+	job_entry_point work;
+
+	/** @todo */
+	size_t stack_size;
+
+	/** @todo */
+	priority job_priority;
+
+	/** @todo */
+	job_status status;
+
+	/** @todo */
+	job_dependency* first_dependency = nullptr;
+
+	/** @todo */
+	bool has_successors;
 
 };
 
@@ -55,41 +100,56 @@ public:
  */
 class job_handle
 {
+protected:
+
+	friend class scheduler;
+
+	/** @todo */
+	job_handle(scheduler* scheduler, size_t index);
+
+	/** @todo */
+	void increase_ref();
+
+	/** @todo */
+	void decrease_ref();
+
 public:
 
-	// @todo: these are just stubs that will update the definition held by the scheduler.
-
+	/** @todo */
 	job_handle();
 
+	/** @todo */
 	job_handle(const job_handle& other);
 
+	/** @todo */
 	~job_handle();
 
+	/** @todo */
 	job_handle& operator=(const job_handle& other);
 
 	/** @todo */
-	void set_work(const job_entry_point& job_work);
+	result set_work(const job_entry_point& job_work);
 
 	/** @todo */
-	void set_stack_size(size_t stack_size);
+	result set_stack_size(size_t stack_size);
 
 	/** @todo */
-	void set_priority(priority job_priority);
+	result set_priority(priority job_priority);
 
 	/** @todo */
-	void clear_dependencies();
+	result clear_dependencies();
 
 	/** @todo */
-	void add_predecessor(job_handle other);
+	result add_predecessor(job_handle other);
 
 	/** @todo */
-	//void add_predecessor(event* other);
+	//result add_predecessor(event* other);
 
 	/** @todo */
-	void add_successor(job_handle other);
+	result add_successor(job_handle other);
 
 	/** @todo */
-	//void add_successor(event* other);
+	//result add_successor(event* other);
 
 	/** @todo */
 	bool is_pending();
@@ -101,66 +161,65 @@ public:
 	bool is_complete();
 
 	/** @todo */
+	bool is_mutable();
+
+	/** @todo */
 	bool is_valid();
 
 	/** @todo */
-	bool wait(timeout = timeout::infinite);
+	result wait(timeout in_timeout = timeout::infinite, priority assist_on_tasks = priority::all_but_slow);
 
 	/** @todo */
-	void dispatch();
+	result dispatch();
+
+	/** @todo */
+	bool operator==(const job_handle& rhs) const;
+
+	/** @todo */
+	bool operator!=(const job_handle& rhs) const;
 
 private:
 
 	/** Pointer to the owning scheduler of this handle. */
-	scheduler* m_scheduler;
+	scheduler* m_scheduler = nullptr;
 
 	/** @todo */
-	size_t m_index;
+	size_t m_index = 0;
 
 };
 
-#if 0
 /**
- *  Encapsulates a single job of work that can be executed by a scheduler.
+ * Holds an individual dependency of a job, allocated from a pool by the scheduler
+ * and joined together as a linked list.
  */
-class job
+class job_dependency
 {
-protected:
-
-	friend class scheduler;
-
-	// We only permit the scheduler to instantiate jobs, everywhere else
-	// the jobs must be passed around by reference.
-	job() = delete;
-
-	/**
-	 * \brief Constructor.
-	 *
-	 * \param pool_index Index of the job inside the schedulers internal job pool.
-	 */
-	job(size_t pool_index);
-
 public:
 
-	/** */
-	void set_work(const job_entry_point& job_work);
+	/** @todo */
+	job_dependency(size_t in_pool_index)
+		: pool_index(in_pool_index)
+	{
+	}
 
-	/** */
-	void set_stack_size(size_t stack_size);
+	/** @todo */
+	void reset()
+	{
+		// pool_index should not be reset, it should be persistent.
+		job = job_handle();
+		next = nullptr;
+	}
 
-	/** */
-	void set_priority(priority job_priority);
+	/** @todo */
+	size_t pool_index;
 
-	/** */
-	void add_dependency(job* other);
+	/** @todo */
+	job_handle job;
 
-private:
-
-	/** */
-	size_t m_pool_index;
+	/** @todo */
+	job_dependency* next = nullptr;
 
 };
-#endif
 
 }; /* namespace Jobs */
 

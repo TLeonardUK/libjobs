@@ -53,8 +53,8 @@ add_executable(libjobs
 	"src/jobs_scheduler.cpp"
 	"src/jobs_thread.cpp"
 	"src/jobs_fiber.cpp"
-	"src/jobs_queue.cpp"
 	"src/jobs_job.cpp"
+	"src/jobs_enums.cpp"
 )
 
 # If in debug suffix _d to the output name.

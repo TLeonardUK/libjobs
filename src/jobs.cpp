@@ -4,15 +4,18 @@
 
 void* user_alloc(size_t size)
 {
-    void* ptr = malloc(size);
-    printf("User Allocated: %zi (%p)\n", size, ptr);
-    return ptr;
+    return malloc(size);
 }
 
 void user_free(void* ptr)
 {
     free(ptr);
-    printf("User Freed: %p\n", ptr);
+}
+
+void debug_output(jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
+{
+	printf("%s", message);
+	OutputDebugStringA(message);
 }
 
 /*void job_1_work(jobs::job_context& context)
@@ -37,6 +40,7 @@ int main()
 
 	// Create scheduler.
     jobs::scheduler scheduler;    
+	scheduler.set_debug_output(debug_output);
     scheduler.set_memory_functions(memory_functions);
     scheduler.set_max_jobs(1024);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
@@ -48,82 +52,35 @@ int main()
     jobs::result result = scheduler.init();
     assert(result == jobs::result::success);
 
-/*
-	// Option 1
-	jobs::job job;
-	job.set_work([=]() { printf("Work Executed!\n"); });
-	job.set_stack_size(5 * 1024);
-	job.set_priority(jobs::priority::low);
-	job.add_dependency(job_handle_2);
-
-	jobs::job_handle handle;
-	result = scheduler.dispatch_job(job, handle);
-	assert(result == jobs::result::success);
-
-	handle.wait();
-	handle.get_status();
-
-	// todo: ref counted handle to dispose of.
-
-
-	// Option 2
-	jobs::job job;
-	job.set_work([=]() { printf("Work Executed!\n"); });
-	job.set_stack_size(5 * 1024);
-	job.set_priority(jobs::priority::low);
-
-	jobs::job_handle handle;
-	result = scheduler.dispatch_job(job, handle, dependencies);
-	assert(result == jobs::result::success);
-
-	handle.wait();
-	handle.get_status();
-*/
-
 	// Job 1
 	jobs::job_handle job1;
 	result = scheduler.create_job(job1);
 	assert(result == jobs::result::success);
 
-	job1.set_work([=]() { printf("Job 1 executed\n"); });
+	job1.set_work([=]() { printf("Final executed\n"); });
 	job1.set_stack_size(5 * 1024);
 	job1.set_priority(jobs::priority::low);
 
-	// Job 2
-	jobs::job_handle job2;
-	result = scheduler.create_job(job2);
-	assert(result == jobs::result::success);
+	for (int i = 0; i < 10; i++)
+	{
+		// Job 2
+		jobs::job_handle job2;
+		result = scheduler.create_job(job2);
+		assert(result == jobs::result::success);
 
-	job2.set_work([=]() { printf("Job 2 executed\n"); });
-	job2.set_stack_size(5 * 1024);
-	job2.set_priority(jobs::priority::low);
-	job2.add_predecessor(job1);
+		job2.set_work([=]() { printf("Sub-job executed\n"); });
+		job2.set_stack_size(5 * 1024);
+		job2.set_priority(jobs::priority::low);
+
+		job1.add_predecessor(job2);
+
+		job2.dispatch();
+	}
 
 	// Dispatch and wait
 	job1.dispatch();
-	job2.dispatch();
 
-	job2.wait();
-	
-	//job->get_status();
-	//job->wait();
-
-/*
-	// Option 4
-	jobs::job job;
-	job.set_stack_size(5 * 1024);
-	job.set_priority(jobs::priority::low);
-	job.add_dependency(first_job);
-
-	result = scheduler.create_job(job);
-	assert(result == jobs::result::success);
-
-	scheduler.dispatch_job(job);
-
-	scheduler.is_job_complete();
-	scheduler.is_idle();
-	scheduler.wait_for_completion();
-*/
+	scheduler.wait_until_idle();
 
 	printf("Press any key to exit ...\n");
 	getchar();

@@ -33,12 +33,28 @@
 #include "jobs_job.h"
 
 #include <functional>
+#include <condition_variable>
+#include <memory>
 
 namespace jobs {
     
 class thread;
 class fiber;
-class job;
+class job_definition;
+class job_dependency;
+class job_handle;
+
+/**
+ *  \brief User-defined callback function for debugging information.
+ *
+ *  Function prototype that can be passed into a job scheduler through
+ *  set_debug_output, which will be piped all internal output of the scheduler.
+ *
+ *  \param level verbosity level of the log.
+ *  \param group semantic group a log belongs to.
+ *  \param message actual text being logged.
+ */
+typedef std::function<void(debug_log_verbosity level, debug_log_group group, const char* message)> debug_output_function;
 
 /**
  *  The scheduler is the heart of the library. Its responsible for managing the 
@@ -63,6 +79,15 @@ public:
      */
     result set_memory_functions(const memory_functions& functions);
 
+	/**
+	 * \brief Provides a function which all debug output will be passed.
+	 *
+	 * \param function Function to pass all debug output.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result set_debug_output(const debug_output_function& function);
+
     /**
      * \brief Sets the maximum number of jobs.
      *
@@ -74,6 +99,18 @@ public:
      * \return Value indicating the success of this function.
      */
     result set_max_jobs(size_t max_jobs);
+
+	/**
+	 * \brief Sets the maximum number of job dependencies.
+	 *
+	 * Sets the maximum number of jobs dependencies shared between all jobs at a given time.
+	 * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
+	 *
+	 * \param max_dependencies New maximum number of job dependencies.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result set_max_dependencies(size_t max_dependencies);
     
     /**
      * \brief Adds a new pool of worker threads to the scheduler.
@@ -128,21 +165,13 @@ public:
 	 *
 	 * \return Value indicating the success of this function.
 	 */
-	result create_job(job*& instance);
-
-	/**
-	 * \brief Queues a previously created job for execution.
-	 *
-	 * The job to be queued must have previously been created with create_job.
-	 *
-	 * \param instance Job to enqueue for execution.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	//result dispatch_job(job* instance);
+	result create_job(job_handle& instance);
 
 	/** @todo */
-	//bool wait_until_idle();
+	result wait_until_idle(timeout wait_timeout = timeout::infinite, priority assist_on_tasks = priority::all_but_slow);
+
+	/** @todo */
+	bool is_idle() const;
 
 private:
 
@@ -172,6 +201,56 @@ private:
 		fixed_pool<fiber> pool;
 	};
 
+	/** Internal representation of a queue of pending tasks */
+	struct job_queue
+	{
+		/**  @todo */
+		size_t* pending_job_indicies = nullptr;
+
+		/**  @todo */
+		size_t pending_job_count = 0;
+	};
+
+protected:
+
+	friend class job_handle;
+
+	/** @todo */
+	job_definition& get_job_definition(size_t index);
+
+	/** @todo */
+	void free_job(size_t index);
+
+	/** @todo */
+	void increase_job_ref_count(size_t index);
+
+	/** @todo */
+	void decrease_job_ref_count(size_t index);
+
+	/** @todo */
+	result dispatch_job(size_t index);
+
+	/** @todo */
+	bool get_next_job(size_t& job_index, priority priorities, bool can_block);
+
+	/** @todo */
+	bool get_next_job_from_queue(size_t& job_index, job_queue& queue);
+
+	/** @todo */
+	void complete_job(size_t job_index);
+
+	/** @todo */
+	result wait_for_job(job_handle job_handle, timeout wait_timeout = timeout::infinite, priority assist_on_tasks = priority::all_but_slow);
+
+	/** @todo */
+	void write_log(debug_log_verbosity level, debug_log_group group, const char* message, ...);
+
+	/** @todo */
+	void clear_job_dependencies(size_t job_index);
+
+	/** @todo */
+	result add_job_dependency(size_t successor, size_t predecessor);
+
 private:
 
     /** Default memory allocation function */
@@ -181,10 +260,10 @@ private:
     static void default_free(void* ptr);
 
 	/** Entry point for all worker threads. */
-	void worker_entry_point(const thread& this_thread, const thread_pool& thread_pool);
+	void worker_entry_point(size_t pool_index, size_t worker_index, const thread& this_thread, const thread_pool& thread_pool);
 
 	/** Entry point for all worker job fibers. */
-	void worker_fiber_entry_point(const fiber& this_fiber);
+	void worker_fiber_entry_point(size_t pool_index, size_t worker_index, const fiber& this_fiber);
 
 	/**
 	 * Executes the next job in the work queue.
@@ -205,6 +284,9 @@ private:
     const static size_t max_fiber_pools = 16;
 
     /** User-defined memory allocation functions. */
+	memory_functions m_raw_memory_functions;
+
+	/** Trampolined memory functions that also log allocations. */
 	memory_functions m_memory_functions;
 
     /** Maximum number of jobs this scheduler can handle concurrently. */
@@ -232,8 +314,49 @@ private:
 	bool m_destroying = false;
 
 	/** Pool of jobs that can be allocated. */
-	fixed_pool<job> m_job_pool;
+	fixed_pool<job_definition> m_job_pool;
 
+	/** Function to pass all debug output */
+	debug_output_function m_debug_output_function = nullptr;
+
+	/** Maximum size of each log message. */
+	static const int max_log_size = 1024;
+
+	/** Buffer used for creating log message formats. */
+	char m_log_format_buffer[max_log_size];
+
+	/** Buffer used for creating log messages. */
+	char m_log_buffer[max_log_size];
+
+	/** Mutex for writing to the log */
+	std::mutex m_log_mutex;
+
+	/** Total memory alloacted */
+	std::atomic<size_t> m_total_memory_allocated = 0;
+
+	/** Pending job queues, one for each priority. */
+	job_queue m_pending_job_queues[(int)priority::count];
+
+	/** Task available mutex */
+	std::mutex m_task_available_mutex;
+
+	/** Task available condition variable */
+	std::condition_variable m_task_available_cvar;
+
+	/** Task complete mutex */
+	std::mutex m_task_complete_mutex;
+
+	/** Task complete condition variable */
+	std::condition_variable m_task_complete_cvar;
+
+	/** Number of jobs that have been dispatched but not completed yet. */
+	std::atomic<size_t> m_active_job_count = 0;
+
+	/** Maximum number of dependencies jobs can have. */
+	size_t m_max_dependencies = 1024;
+
+	/** Pool of dependencies to be allocated. */
+	fixed_pool<job_dependency> m_job_dependency_pool;
 };
 
 }; /* namespace Jobs */

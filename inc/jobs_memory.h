@@ -85,7 +85,7 @@ public:
 	 *
 	 *  \return Result of initialization, initialization will abort on first failed element.
 	 */
-	typedef std::function<result(data_type* ptr, int index)> init_function;
+	typedef std::function<result(data_type* ptr, size_t index)> init_function;
 
 public:
 
@@ -101,10 +101,10 @@ public:
 	/** Destructor. */
 	~fixed_pool()
 	{
-		if (m_free_objects != nullptr)
+		if (m_free_object_indices != nullptr)
 		{
-			m_memory_functions.user_free(m_free_objects);
-			m_free_objects = nullptr;
+			m_memory_functions.user_free(m_free_object_indices);
+			m_free_object_indices = nullptr;
 		}
 		if (m_objects != nullptr)
 		{
@@ -118,7 +118,7 @@ public:
 	}
 
 	/** @todo */
-	result init(const memory_functions& memory_functions, int capacity, const init_function& init_function)
+	result init(const memory_functions& memory_functions, size_t capacity, const init_function& init_function)
 	{
 		m_memory_functions = memory_functions;
 		m_capacity = capacity;
@@ -142,17 +142,17 @@ public:
 
 		// Alloc and fill the free object list.
 		m_free_object_count = m_capacity;
-		m_free_objects = static_cast<data_type**>(m_memory_functions.user_alloc(sizeof(data_type*) * capacity));
+		m_free_object_indices = static_cast<size_t*>(m_memory_functions.user_alloc(sizeof(size_t) * capacity));
 		for (int i = 0; i < capacity; i++)
 		{
-			m_free_objects[i] = m_objects + i;
+			m_free_object_indices[i] = i;
 		}
 
 		return result::success;
 	}
 
 	/** @todo */
-	result alloc(data_type*& output)
+	result alloc(size_t& output)
 	{
 		// @todo: make this atomic
 		std::lock_guard<std::mutex> lock(m_access_mutex);
@@ -162,23 +162,29 @@ public:
 			return result::out_of_objects;
 		}
 
-		int index = --m_free_object_count;
+		size_t free_index = --m_free_object_count;
 
-		output = m_free_objects[index];
+		output = m_free_object_indices[free_index];
 
 		return result::success;
 	}
 
 	/** @todo */
-	result free(data_type* object)
+	result free(size_t object)
 	{
 		// @todo: make this atomic
 		std::lock_guard<std::mutex> lock(m_access_mutex);
 
-		m_free_objects[m_free_object_count] = object;
-		m_free_objects++;
+		m_free_object_indices[m_free_object_count] = object;
+		m_free_object_count++;
 
 		return result::success;
+	}
+
+	/** @todo */
+	data_type* get_index(size_t index)
+	{
+		return &m_objects[index];
 	}
 
 private:
@@ -196,7 +202,7 @@ private:
 	size_t m_capacity = 0;
 
 	/** @todo */
-	data_type** m_free_objects = nullptr;
+	size_t* m_free_object_indices = nullptr;
 
 	/** @todo */
 	size_t m_free_object_count = 0;

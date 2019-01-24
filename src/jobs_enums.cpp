@@ -1,4 +1,4 @@
-﻿/*
+/*
   libjobs - Simple coroutine based job scheduling.
   Copyright (C) 2019 Tim Leonard <me@timleonard.uk>
 
@@ -19,21 +19,55 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-/**
- *  \file jobs.h
- *
- *  Main include header for the jobs library
- */
-
-#ifndef __JOBS_H__
-#define __JOBS_H__
-
 #include "jobs_enums.h"
-#include "jobs_fiber.h"
-#include "jobs_job.h"
-#include "jobs_memory.h"
-#include "jobs_platform.h"
-#include "jobs_scheduler.h"
-#include "jobs_thread.h"
 
-#endif /* __JOBS_H__ */
+namespace jobs {
+
+const timeout timeout::infinite = timeout(UINT64_MAX);
+
+const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count] =
+{
+	"error",
+	"warning",
+	"message",
+	"verbose",
+};
+
+const char* debug_log_group_strings[(int)debug_log_group::count] =
+{
+	"worker",
+	"scheduler",
+	"memory",
+	"job",
+};
+
+void stopwatch::start()
+{
+	m_start_time = std::chrono::high_resolution_clock::now();
+	m_has_end = false;
+}
+
+void stopwatch::stop()
+{
+	m_end_time = std::chrono::high_resolution_clock::now();
+	m_has_end = true;
+}
+
+size_t stopwatch::get_elapsed_ms()
+{
+	std::chrono::high_resolution_clock::time_point end_time;
+	if (m_has_end)
+	{
+		end_time = m_end_time;
+	}
+	else
+	{
+		end_time = std::chrono::high_resolution_clock::now();
+	}
+
+	float elapsed = std::chrono::duration<float, std::chrono::milliseconds::period>(end_time - m_start_time).count();
+
+	return (size_t)elapsed;
+}
+
+}; /* namespace Jobs */

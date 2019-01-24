@@ -28,6 +28,9 @@
 #ifndef __JOBS_ENUM_H__
 #define __JOBS_ENUM_H__
 
+#include <stdint.h>
+#include <chrono>
+
 namespace jobs {
 
 /**
@@ -49,6 +52,10 @@ enum class result
     no_thread_pools,        /**< Scheduler attempted to be initialized with no thread pools defined. */  
     no_fiber_pools,         /**< Scheduler attempted to be initialized with no fiber pools defined. */  
 	platform_error,			/**< A internal platform function call failed for unspecified/unknown reasons. */
+	invalid_handle,			/**< The handle the operation was performed on was invalid, either it points to a disposed object, or was never initialized. */
+	already_dispatched,		/**< Job has already been dispatched and cannot be again until complete. */
+	not_mutable,			/**< Object is in a state where it is not currently mutable (dispatch/in-progress). */
+	timeout,				/**< Operation timed out before completion. */
 };
 
 /**
@@ -56,17 +63,119 @@ enum class result
  *
  *  Defines how urgent a job is. The job scheduler will always 
  *  attempt to execute higher priorities first.
+ *
+ *  Should be ordered most to least priority.
  */
 enum class priority
 {
-    slow         = 1 << 0,			/**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */  
-    low          = 1 << 1,			/**< Low priority jobs */  
-    medium       = 1 << 2,			/**< Medium priority jobs */  
-    high         = 1 << 3,			/**< High priority jobs */  
-    critical     = 1 << 4,			/**< Critical priority jobs */  
+	critical	= 1 << 0,			/**< Critical priority jobs */
+	high		= 1 << 1,			/**< High priority jobs */
+	medium		= 1 << 2,			/**< Medium priority jobs */
+	low			= 1 << 3,			/**< Low priority jobs */
+	slow        = 1 << 4,			/**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */
+    
+	count		 = 5,		
+
     all          = 0xFFFF,			/**< All priorities together. */  
     all_but_slow = 0xFFFF & ~slow , /**< All priorities together except slow. */  
 };
+
+/**
+ *  \brief Verbosity of a debug output message.
+ */
+enum class debug_log_verbosity
+{
+	error,		/**< A potentially critical error has occured. */  
+	warning,	/**< A recoverable, but potentially unwanted problem occured. */  
+	message,	/**< General logging message, describing progress */  
+	verbose,	/**< Very verbose debugging information */  
+
+	count
+};
+
+/** String representation of values in enum debug_log_verbosity. */
+extern const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count];
+
+/**
+ *  \brief Semantic group a log message belongs to.
+ */
+enum class debug_log_group
+{
+	worker,		/**< Regarding the management of worker threads/fibers. */
+	scheduler,	/**< Regarding job scheduling */
+	memory,		/**< Regarding memroy management */
+	job,		/**< Regarding job management */
+
+	count
+};
+
+/** String representation of values in enum debug_log_group. */
+extern const char* debug_log_group_strings[(int)debug_log_group::count];
+
+/**
+ *  \brief Represents a period of time used as a timeout for a blocking function.
+ */
+struct timeout
+{
+public:
+
+	/** Duration of this timeout in milliseconds. */
+	uint64_t duration;
+
+	/**
+	 *  \brief Constructor
+	 *
+	 *  \param inDuration Duration in milliseconds of this timeout.
+	 */
+	timeout(uint64_t inDuration)
+		: duration(inDuration)
+	{
+	}
+
+	/**
+	 *  \brief Returns true if this timeout is infinite.
+	 *
+	 *  \return true if an infinite timeout.
+	 */
+	bool is_infinite()
+	{
+		return duration == infinite.duration;
+	}
+
+	/** Represents an infinite, non-ending timeout. */
+	static const timeout infinite;
+
+};
+
+/**
+ *  \brief Utility class used to time the duration between two points in code.
+ */
+struct stopwatch
+{
+public:
+
+	/** @todo */
+	void start();
+
+	/** @todo */
+	void stop();
+
+	/** @todo */
+	size_t get_elapsed_ms();
+
+private:
+
+	/** @todo */
+	std::chrono::high_resolution_clock::time_point m_start_time;
+
+	/** @todo */
+	std::chrono::high_resolution_clock::time_point m_end_time;
+
+	/** @todo */
+	bool m_has_end = false;
+
+};
+
 
 }; /* namespace Jobs */
 
