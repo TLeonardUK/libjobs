@@ -274,9 +274,9 @@ result scheduler::init()
 		{
 			new(instance) fiber(m_memory_functions);
 
-			return instance->init(pool.stack_size, [=]()
+			return instance->init(pool.stack_size, [this, i, index]()
 			{
-				worker_fiber_entry_point(i, index, *instance);
+				worker_fiber_entry_point(i, index);
 			});
 		});
 
@@ -540,7 +540,7 @@ void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const
 	fiber::convert_fiber_to_thread();
 }
 
-void scheduler::worker_fiber_entry_point(size_t pool_index, size_t worker_index, const fiber& this_fiber)
+void scheduler::worker_fiber_entry_point(size_t pool_index, size_t worker_index)
 {
 	write_log(debug_log_verbosity::verbose, debug_log_group::worker, "fiber started, pool=%zi worker=%zi", pool_index, worker_index);
 
@@ -700,6 +700,8 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
 		if (remove_job)
 		{
+			//write_log(debug_log_verbosity::message, debug_log_group::worker, "Removing %zi from queue %i", job_index, queue_mask);
+
 			queue.pending_job_indicies[i] = queue.pending_job_indicies[queue.pending_job_count - 1];
 			queue.pending_job_count--;
 
@@ -710,6 +712,8 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 		}
 		else if (shift_job_to_back)
 		{
+			//write_log(debug_log_verbosity::message, debug_log_group::worker, "Shifting %zi in queue %i", job_index, queue_mask);
+
 			// If the dependencies for this job has failed, shift it to the back of the queue so we don't
 			// check it uneccessarily in future.
 			queue.pending_job_indicies[i] = queue.pending_job_indicies[queue.pending_job_count - 1];
@@ -732,6 +736,8 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
 		if (return_job)
 		{
+			//write_log(debug_log_verbosity::message, debug_log_group::worker, "Picked up %zi from queue %i", job_index, queue_mask);
+
 			// Make job as running so nothing else attempts to pick it up.
 			def.status = job_status::running;
 
@@ -840,6 +846,7 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
 		// To to switcharoo to fiber land.
 		m_worker_job_index = job_index;
 		fiber* job_fiber = m_fiber_pools_sorted_by_stack[def.context.fiber_pool_index]->pool.get_index(def.context.fiber_index);
+		write_log(debug_log_verbosity::warning, debug_log_group::job, "switching job %zi", job_index);
 		switch_context(def.context);
 
 		// If not complete yet, requeue, we probably have some sync point/dependencies to deal with.

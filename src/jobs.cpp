@@ -89,7 +89,7 @@ int main()
 	scheduler.set_max_dependencies(200000);
 	scheduler.set_max_profile_scopes(200000);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
-	scheduler.add_thread_pool(3, jobs::priority::all_but_slow);
+	scheduler.add_thread_pool(5, jobs::priority::all_but_slow);
     scheduler.add_fiber_pool(100, 64 * 1024);
     scheduler.add_fiber_pool(1000, 1 * 1024);
     scheduler.add_fiber_pool(10, 2 * 1024 * 1024);
@@ -119,23 +119,20 @@ int main()
 
 		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
 		job2.set_work([=](jobs::job_context& context) {
-
-			std::string msg = ("Sub-job executed " + std::to_string(i) + "\n");
-			printf("%s", msg.c_str()); 
-			OutputDebugStringA(msg.c_str());
-
 			context.enter_scope(jobs::scope_type::user_defined, "Fake Work");
-			float max = 0;
+
+			volatile float max = 0;
 			for (int i = 0; i < 100000; i++)
 			{
 				max += atan2(i, i / 2);
 			}
+
 			context.leave_scope();
 		});
 		job2.set_stack_size(5 * 1024);
 		job2.set_priority(jobs::priority::low);
 
-	//	job1.add_predecessor(job2);
+		job1.add_predecessor(job2);
 
 		job2.dispatch();
 	}

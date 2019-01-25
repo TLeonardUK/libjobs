@@ -336,7 +336,7 @@ private:
 	void worker_entry_point(size_t pool_index, size_t worker_index, const thread& this_thread, const thread_pool& thread_pool);
 
 	/** Entry point for all worker job fibers. */
-	void worker_fiber_entry_point(size_t pool_index, size_t worker_index, const fiber& this_fiber);
+	void worker_fiber_entry_point(size_t pool_index, size_t worker_index);
 
 	/**
 	 * Executes the next job in the work queue.
