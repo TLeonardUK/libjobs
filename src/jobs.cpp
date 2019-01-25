@@ -88,6 +88,7 @@ int main()
     scheduler.set_max_jobs(200000);
 	scheduler.set_max_dependencies(200000);
 	scheduler.set_max_profile_scopes(200000);
+	scheduler.set_max_events(1000);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
 	scheduler.add_thread_pool(10, jobs::priority::all_but_slow);
     scheduler.add_fiber_pool(100, 64 * 1024);
@@ -110,6 +111,7 @@ int main()
 	job1.set_stack_size(5 * 1024);
 	job1.set_priority(jobs::priority::low);
 
+	/*
 	for (int i = 0; i < 100000; i++)
 	{
 		// Job 2
@@ -127,6 +129,9 @@ int main()
 				max += atan2(i, i / 2);
 			}
 
+			context.sleep(100);
+			context.wait_for_event();
+
 			context.leave_scope();
 		});
 		job2.set_stack_size(5 * 1024);
@@ -136,9 +141,62 @@ int main()
 
 		job2.dispatch();
 	}
+	*/
+
+	// for sleep(x)
+	//		have additional thread dedicated to firing the sleep event. It always sleeps on a cvar with the timeout being
+	//		the time until the next sleep timeout. When a new sleep event is queued a signal is sent to wakeup the thread
+	//		to update it's timeout
+	
+	// for event(x)
+	//		we just add a predecessor to the counter, and reduce it once signaled.
+
+	job::event_handle second_stage_event;
+	result = scheduler.create_event(second_stage_event);
+	assert(result == jobs::result::success);
+
+	for (int i = 0; i < 100000; i++)
+	{
+		// Job 2
+		jobs::job_handle job2;
+		result = scheduler.create_job(job2);
+		assert(result == jobs::result::success);
+
+		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
+		job2.set_stack_size(5 * 1024);
+		job2.set_priority(jobs::priority::low);
+		job2.set_work([=](jobs::job_context& context) {
+
+			context.enter_scope(jobs::scope_type::user_defined, "Fake Work");
+			volatile float max = 0;
+			for (int i = 0; i < 100000; i++)
+			{
+				max += atan2(i, i / 2);
+			}
+			context.leave_scope();
+
+			context.wait_for_event(second_stage_event, jobs::timeout::infinite);
+
+			context.enter_scope(jobs::scope_type::user_defined, "Fake Work 2");
+			volatile float max = 0;
+			for (int i = 0; i < 100000; i++)
+			{
+				max += atan2(i, i / 2);
+			}
+			context.leave_scope();
+
+		});
+
+		job1.add_predecessor(job2);
+		job2.dispatch();
+	}
 
 	// Dispatch and wait
 	job1.dispatch();
+
+	// Wait before second stage.
+	Sleep(10 * 1000);
+	second_stage_event.signal();
 
 	scheduler.wait_until_idle();
 
