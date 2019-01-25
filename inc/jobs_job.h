@@ -173,10 +173,13 @@ public:
 	job_status status;
 
 	/** @todo */
-	job_dependency* first_dependency = nullptr;
+	job_dependency* first_predecessor = nullptr;
 
 	/** @todo */
-	bool has_successors;
+	job_dependency* first_successor = nullptr;
+
+	/** @todo */
+	std::atomic<size_t> pending_predecessors;
 
 	/** @todo */
 	job_context context;

@@ -89,7 +89,7 @@ int main()
 	scheduler.set_max_dependencies(200000);
 	scheduler.set_max_profile_scopes(200000);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
-	scheduler.add_thread_pool(5, jobs::priority::all_but_slow);
+	scheduler.add_thread_pool(10, jobs::priority::all_but_slow);
     scheduler.add_fiber_pool(100, 64 * 1024);
     scheduler.add_fiber_pool(1000, 1 * 1024);
     scheduler.add_fiber_pool(10, 2 * 1024 * 1024);

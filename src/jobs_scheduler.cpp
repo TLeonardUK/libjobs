@@ -442,20 +442,39 @@ void scheduler::clear_job_dependencies(size_t job_index)
 {
 	job_definition& def = get_job_definition(job_index);
 
-	job_dependency* dep = def.first_dependency;
-	while (dep != nullptr)
+	// Clear up predecessors.
 	{
-		size_t pool_index = dep->pool_index;
+		job_dependency* dep = def.first_predecessor;
+		while (dep != nullptr)
+		{
+			size_t pool_index = dep->pool_index;
 
-		job_dependency* next = dep->next;
+			job_dependency* next = dep->next;
 
-		dep->reset();
-		m_job_dependency_pool.free(pool_index);
+			dep->reset();
+			m_job_dependency_pool.free(pool_index);
 
-		dep = next;
+			dep = next;
+		}
+		def.first_predecessor = nullptr;
 	}
 
-	def.first_dependency = nullptr;
+	// Clear up successors.
+	{
+		job_dependency* dep = def.first_successor;
+		while (dep != nullptr)
+		{
+			size_t pool_index = dep->pool_index;
+
+			job_dependency* next = dep->next;
+
+			dep->reset();
+			m_job_dependency_pool.free(pool_index);
+
+			dep = next;
+		}
+		def.first_successor = nullptr;
+	}
 }
 
 result scheduler::add_job_dependency(size_t successor, size_t predecessor)
@@ -463,20 +482,30 @@ result scheduler::add_job_dependency(size_t successor, size_t predecessor)
 	job_definition& successor_def = get_job_definition(successor);
 	job_definition& predecessor_def = get_job_definition(predecessor);
 
-	size_t dependency_index;
-	result res = m_job_dependency_pool.alloc(dependency_index);
-	if (res != result::success)
+	size_t successor_dep_index;
+	size_t predecessor_dep_index;
+
+	result res1 = m_job_dependency_pool.alloc(successor_dep_index);
+	result res2 = m_job_dependency_pool.alloc(predecessor_dep_index);
+
+	if (res1 != result::success || res2 != result::success)
 	{
 		write_log(debug_log_verbosity::warning, debug_log_group::job, "attempt to add job dependency, but dependency pool is empty, if unhandled may cause incorrect job ordering behaviour. Try increasing scheduler::set_max_dependencies.");
-		return res;
+		return res1;
 	}
 
-	job_dependency* dependency = m_job_dependency_pool.get_index(dependency_index);
-	dependency->job = job_handle(this, predecessor);
-	dependency->next = successor_def.first_dependency;
+	job_dependency* successor_dep = m_job_dependency_pool.get_index(successor_dep_index);
+	successor_dep->job = job_handle(this, successor);
+	successor_dep->next = predecessor_def.first_successor;
 
-	predecessor_def.has_successors = true;
-	successor_def.first_dependency = dependency;
+	job_dependency* predecessor_dep = m_job_dependency_pool.get_index(predecessor_dep_index);
+	predecessor_dep->job = job_handle(this, predecessor);
+	predecessor_dep->next = successor_def.first_predecessor;
+
+	successor_def.first_predecessor = predecessor_dep;
+	predecessor_def.first_successor = successor_dep;
+
+	successor_def.pending_predecessors++;
 
 	return result::success;
 }
@@ -673,7 +702,7 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 			bool dependencies_satisfied = true;
 
 			// Check dependencies are all satisfied.
-			job_dependency* dep = def.first_dependency;
+			/*job_dependency* dep = def.first_dependency;
 			while (dep != nullptr)
 			{
 				if (!dep->job.is_complete())
@@ -682,7 +711,9 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 					break;
 				}
 				dep = dep->next;
-			}
+			}*/
+
+			dependencies_satisfied = (def.pending_predecessors == 0);
 
 			if (dependencies_satisfied)
 			{
@@ -784,9 +815,23 @@ void scheduler::complete_job(size_t job_index)
 {
 	job_definition& def = get_job_definition(job_index);
 
-	bool has_successors = def.has_successors;
+	bool needs_to_wake_up_successors = false;
 
 	def.status = job_status::completed;
+
+	// For each successor, reduce its pending predecessor count.
+	job_dependency* dep = def.first_successor;
+	while (dep != nullptr)
+	{
+		job_definition& successor_def = get_job_definition(dep->job.m_index);
+		size_t num = --successor_def.pending_predecessors;
+		if (num <= 0)
+		{
+			needs_to_wake_up_successors = true;
+		}
+
+		dep = dep->next;
+	}
 
 	// Clear up the fiber now, even if our handle is going to hang around for a while.
 	if (def.context.has_fiber)
@@ -795,6 +840,9 @@ void scheduler::complete_job(size_t job_index)
 		def.context.has_fiber = false;
 	}
 
+	// Clean up dependencies, we no longer need them at this point.
+	clear_job_dependencies(job_index);
+
 	// Remove the ref count we added on dispatch.
 	decrease_job_ref_count(job_index);
 
@@ -802,7 +850,7 @@ void scheduler::complete_job(size_t job_index)
 	m_active_job_count--;
 
 	// If job had successors, invoke task available cvar to wake everyone up.
-	if (has_successors)
+	if (needs_to_wake_up_successors)
 	{
 		std::unique_lock<std::mutex> lock(m_task_available_mutex);
 		m_task_available_cvar.notify_all();
@@ -846,7 +894,7 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
 		// To to switcharoo to fiber land.
 		m_worker_job_index = job_index;
 		fiber* job_fiber = m_fiber_pools_sorted_by_stack[def.context.fiber_pool_index]->pool.get_index(def.context.fiber_index);
-		write_log(debug_log_verbosity::warning, debug_log_group::job, "switching job %zi", job_index);
+		//write_log(debug_log_verbosity::warning, debug_log_group::job, "switching job %zi", job_index);
 		switch_context(def.context);
 
 		// If not complete yet, requeue, we probably have some sync point/dependencies to deal with.

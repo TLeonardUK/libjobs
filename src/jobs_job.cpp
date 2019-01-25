@@ -134,13 +134,14 @@ void job_definition::reset()
 	stack_size = 0;
 	job_priority = priority::medium;
 	status = job_status::initialized;
-	has_successors = false;
 	tag[0] = '\0';
+	pending_predecessors = 0;
 
 	context.reset();
 
 	// Should have been cleaned up by scheduler at this point ...
-	assert(first_dependency == nullptr);
+	assert(first_predecessor == nullptr);
+	assert(first_successor == nullptr);
 }
 
 job_handle::job_handle(scheduler* scheduler, size_t index)
@@ -181,12 +182,18 @@ job_handle& job_handle::operator=(const job_handle& other)
 
 void job_handle::increase_ref()
 {
-	m_scheduler->increase_job_ref_count(m_index);
+	if (m_scheduler != nullptr)
+	{
+		m_scheduler->increase_job_ref_count(m_index);
+	}
 }
 
 void job_handle::decrease_ref()
 {
-	m_scheduler->decrease_job_ref_count(m_index);
+	if (m_scheduler != nullptr)
+	{
+		m_scheduler->decrease_job_ref_count(m_index);
+	}
 }
 
 result job_handle::set_work(const job_entry_point& job_work)
@@ -290,6 +297,14 @@ result job_handle::add_predecessor(job_handle other)
 	{
 		return result::not_mutable;
 	}
+	if (!other.is_valid())
+	{
+		return result::invalid_handle;
+	}
+	if (!other.is_mutable())
+	{
+		return result::not_mutable;
+	}
 
 	return m_scheduler->add_job_dependency(m_index, other.m_index);
 }
@@ -301,6 +316,14 @@ result job_handle::add_successor(job_handle other)
 		return result::invalid_handle;
 	}
 	if (!is_mutable())
+	{
+		return result::not_mutable;
+	}
+	if (!other.is_valid())
+	{
+		return result::invalid_handle;
+	}
+	if (!other.is_mutable())
 	{
 		return result::not_mutable;
 	}
