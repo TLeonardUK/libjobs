@@ -32,16 +32,103 @@
 
 #include "jobs_enums.h"
 #include "jobs_scheduler.h"
+#include "jobs_fiber.h"
 
 namespace jobs {
 	
 class job_dependency;
-class fiber;
+
+/**
+ * Represents an individual scope in a fibers profiling hierarchy. 
+ * This is stored together as a single linked list.
+ */
+class profile_scope
+{
+public:
+
+	/** @todo */
+	scope_type type;
+
+	/** @todo */
+	static const size_t max_tag_length = 64;
+
+	/** @todo */
+	char tag[max_tag_length];
+
+	/** @todo */
+	profile_scope* next;
+
+	/** @todo */
+	profile_scope* prev;
+
+};
+
+/**
+ * Holds the execution context of a job, this provides various functionality to 
+ * manipulate the execution of a job, such as waiting for events, creating profile scopes, etc.
+ */
+class job_context
+{
+protected:
+
+	friend class scheduler;
+
+	/** @todo */
+	bool has_fiber = false;
+
+	/** @todo */
+	size_t fiber_index;
+
+	/** @todo */
+	size_t fiber_pool_index;
+
+	/** @todo */
+	size_t queues_contained_in;
+
+	/** @todo */
+	bool is_fiber_raw;
+
+	/** @todo */
+	fiber raw_fiber;
+
+	/** @todo */
+	size_t profile_scope_depth;
+
+	/** @todo */
+	profile_scope* profile_stack_head = nullptr;
+
+	/** @todo */
+	profile_scope* profile_stack_tail = nullptr;
+
+	/** @todo */
+	scheduler* scheduler = nullptr;
+
+public:
+
+	/** @todo */
+	job_context();
+
+	/** @todo */
+	void reset();
+
+	/** @todo */
+	//result sleep(size_t milliseconds);
+
+	/** @todo */
+	//result wait_for(job_event evt);
+
+	/** @todo */
+	result enter_scope(scope_type type, const char* tag, ...);
+
+	/** @todo */
+	result leave_scope();
+
+};
 
 /**
  *  \brief Entry point for a jobs workload.
  */
-typedef std::function<void()> job_entry_point;
+typedef std::function<void(job_context& context)> job_entry_point;
 
 /**
  *  \brief Current status of a job.
@@ -92,16 +179,13 @@ public:
 	bool has_successors;
 
 	/** @todo */
-	bool has_fiber = false;
+	job_context context;
 
 	/** @todo */
-	size_t fiber_index;
+	static const size_t max_tag_length = 64;
 
 	/** @todo */
-	size_t fiber_pool_index;
-
-	/** @todo */
-	size_t queues_contained_in;
+	char tag[max_tag_length];
 
 };
 
@@ -142,6 +226,9 @@ public:
 
 	/** @todo */
 	result set_work(const job_entry_point& job_work);
+
+	/** @todo */
+	result set_tag(const char* tag);
 
 	/** @todo */
 	result set_stack_size(size_t stack_size);

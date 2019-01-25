@@ -21,9 +21,106 @@
 
 #include "jobs_job.h"
 
+#include <cstdarg>
 #include <cassert>
+#include <algorithm>
 
 namespace jobs {
+
+job_context::job_context()
+{
+	reset();
+}
+
+void job_context::reset()
+{
+	queues_contained_in = 0;
+	fiber_pool_index = 0;
+	fiber_index = 0;
+	is_fiber_raw = false;
+	profile_scope_depth = 0;
+
+	// Should have been cleaned up by scheduler at this point ...
+	assert(profile_stack_head == nullptr);
+	assert(profile_stack_tail == nullptr);
+	assert(has_fiber == false);
+}
+
+result job_context::enter_scope(scope_type type, const char* tag, ...)
+{
+	profile_scope* scope = nullptr;
+	result res = scheduler->alloc_scope(scope);
+	if (res != result::success)
+	{
+		return res;
+	}
+
+	va_list list;
+	va_start(list, tag);
+
+	// @todo
+	// microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
+	// we're just memsetting this here. Needs to be done correctly.
+	memset(scope->tag, 0, profile_scope::max_tag_length); 
+	vsnprintf(scope->tag, profile_scope::max_tag_length - 1, tag, list);
+
+	va_end(list);
+
+	scope->type = type;
+	scope->prev = profile_stack_tail;
+	scope->next = nullptr;
+
+	if (profile_stack_head == nullptr)
+	{
+		profile_stack_head = scope;
+	}
+
+	if (profile_stack_tail != nullptr)
+	{
+		profile_stack_tail->next = scope;
+	}
+	profile_stack_tail = scope;
+
+	profile_scope_depth++;
+
+	if (scheduler->m_profile_functions.enter_scope != nullptr)
+	{
+		scheduler->m_profile_functions.enter_scope(scope->type, scope->tag);
+	}
+
+	//printf("[enter_scope:%i] %s\n", profile_scope_depth, scope->tag);
+
+	return result::success;
+}
+
+result job_context::leave_scope()
+{
+	assert(profile_stack_tail != nullptr);
+
+	if (profile_stack_tail->prev != nullptr)
+	{
+		profile_stack_tail->prev->next = nullptr;
+	}
+	if (profile_stack_tail == profile_stack_head)
+	{
+		profile_stack_head = nullptr;
+	}	
+
+	profile_scope* original = profile_stack_tail;	
+
+	//printf("[leave_scope:%o] %s\n", profile_scope_depth - 1, original->tag);
+
+	profile_stack_tail = profile_stack_tail->prev;
+
+	profile_scope_depth--;
+
+	if (scheduler->m_profile_functions.leave_scope != nullptr)
+	{
+		scheduler->m_profile_functions.leave_scope();
+	}
+
+	return scheduler->free_scope(original);
+}
 
 job_definition::job_definition()
 {
@@ -38,11 +135,12 @@ void job_definition::reset()
 	job_priority = priority::medium;
 	status = job_status::initialized;
 	has_successors = false;
-	queues_contained_in = 0;
+	tag[0] = '\0';
+
+	context.reset();
 
 	// Should have been cleaned up by scheduler at this point ...
 	assert(first_dependency == nullptr);
-	assert(has_fiber == false);
 }
 
 job_handle::job_handle(scheduler* scheduler, size_t index)
@@ -104,6 +202,30 @@ result job_handle::set_work(const job_entry_point& job_work)
 
 	job_definition& definition = m_scheduler->get_job_definition(m_index);
 	definition.work = job_work;
+
+	return result::success;
+}
+
+result job_handle::set_tag(const char* tag)
+{
+	if (!is_valid())
+	{
+		return result::invalid_handle;
+	}
+	if (!is_mutable())
+	{
+		return result::not_mutable;
+	}
+
+	job_definition& definition = m_scheduler->get_job_definition(m_index);
+	size_t tag_len = strlen(tag);
+	size_t to_copy = min(tag_len, job_definition::max_tag_length - 1);
+#if JOBS_PLATFORM_WINDOWS
+	strncpy_s(definition.tag, job_definition::max_tag_length, tag, to_copy);
+#else
+	strncpy(definition.tag, tag, to_copy);
+#endif
+	definition.tag[to_copy] = '\0';
 
 	return result::success;
 }

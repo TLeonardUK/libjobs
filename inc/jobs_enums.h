@@ -113,6 +113,16 @@ enum class debug_log_group
 extern const char* debug_log_group_strings[(int)debug_log_group::count];
 
 /**
+ *  \brief Defines a context-specific type of a profiling scope.
+ */
+enum class scope_type
+{
+	worker,			/**< The scope encapsulates scheduling-level work happening outside a fiber. */
+	fiber,			/**< The scope encapsulates job work happening inside a fiber. */
+	user_defined,	/**< The scope was defined by the user. */
+};
+
+/**
  *  \brief Represents a period of time used as a timeout for a blocking function.
  */
 struct timeout
@@ -175,7 +185,6 @@ private:
 	bool m_has_end = false;
 
 };
-
 
 }; /* namespace Jobs */
 

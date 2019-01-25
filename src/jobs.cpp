@@ -1,6 +1,12 @@
 ﻿#include "jobs.h"
 
 #include <cassert>
+#include <string>
+
+// DEBUG DEBUG DEBUG
+#include <Windows.h>
+#include <pix/include/WinPixEventRuntime/pix3.h>
+// DEBUG DEBUG DEBUG
 
 void* user_alloc(size_t size)
 {
@@ -36,21 +42,54 @@ void job_2_work(jobs::job_context& context)
 //    context.wait_for_job();
 }*/
 
+void enter_scope(jobs::scope_type type, const char* tag)
+{
+	UINT64 color;
+	if (type == jobs::scope_type::worker)
+	{
+		color = PIX_COLOR(255, 0, 0);
+	}
+	else if (type == jobs::scope_type::fiber)
+	{
+		color = PIX_COLOR(0, 0, 255);
+	}
+	else 
+	{
+		color = PIX_COLOR(0, 255, 0);
+	}
+
+	//printf("enter %s\n", tag);
+	PIXBeginEvent(color, "%s", tag);
+}
+
+void leave_scope()
+{
+	//printf("leave\n");
+	PIXEndEvent();
+}
+
 int main()
 {
-	// Defined overidden memory functions.
+	// Define overidden memory functions.
 	jobs::memory_functions memory_functions;
 	memory_functions.user_alloc = &user_alloc;
 	memory_functions.user_free = &user_free;
+	
+	// Define profiling functions.
+	jobs::profile_functions profile_functions;
+	profile_functions.enter_scope = &enter_scope;
+	profile_functions.leave_scope = &leave_scope;
 
 	// Create scheduler.
-    jobs::scheduler scheduler;    
+    jobs::scheduler scheduler;
 	scheduler.set_debug_output(debug_output);
-    scheduler.set_memory_functions(memory_functions);
-    scheduler.set_max_jobs(10001);
-	scheduler.set_max_dependencies(10001);
+	scheduler.set_profile_functions(profile_functions);
+	scheduler.set_memory_functions(memory_functions);
+    scheduler.set_max_jobs(200000);
+	scheduler.set_max_dependencies(200000);
+	scheduler.set_max_profile_scopes(200000);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
-	scheduler.add_thread_pool(7, jobs::priority::all_but_slow);
+	scheduler.add_thread_pool(3, jobs::priority::all_but_slow);
     scheduler.add_fiber_pool(100, 64 * 1024);
     scheduler.add_fiber_pool(1000, 1 * 1024);
     scheduler.add_fiber_pool(10, 2 * 1024 * 1024);
@@ -63,22 +102,40 @@ int main()
 	result = scheduler.create_job(job1);
 	assert(result == jobs::result::success);
 
-	job1.set_work([=]() { printf("Final executed\n"); });
+	job1.set_tag("Final Job");
+	job1.set_work([=](jobs::job_context& context) {
+		printf("Final executed\n"); 
+		Sleep(1000);
+	});
 	job1.set_stack_size(5 * 1024);
 	job1.set_priority(jobs::priority::low);
 
-	for (int i = 0; i < 10000; i++)
+	for (int i = 0; i < 100000; i++)
 	{
 		// Job 2
 		jobs::job_handle job2;
 		result = scheduler.create_job(job2);
 		assert(result == jobs::result::success);
 
-		job2.set_work([=]() { printf("Sub-job executed %i\n", i); });
+		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
+		job2.set_work([=](jobs::job_context& context) {
+
+			std::string msg = ("Sub-job executed " + std::to_string(i) + "\n");
+			printf("%s", msg.c_str()); 
+			OutputDebugStringA(msg.c_str());
+
+			context.enter_scope(jobs::scope_type::user_defined, "Fake Work");
+			float max = 0;
+			for (int i = 0; i < 100000; i++)
+			{
+				max += atan2(i, i / 2);
+			}
+			context.leave_scope();
+		});
 		job2.set_stack_size(5 * 1024);
 		job2.set_priority(jobs::priority::low);
 
-		job1.add_predecessor(job2);
+	//	job1.add_predecessor(job2);
 
 		job2.dispatch();
 	}

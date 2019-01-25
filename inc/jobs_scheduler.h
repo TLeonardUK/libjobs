@@ -40,8 +40,10 @@ namespace jobs {
     
 class thread;
 class fiber;
+class profile_scope;
 class job_definition;
 class job_dependency;
+class job_context;
 class job_handle;
 
 /**
@@ -55,6 +57,28 @@ class job_handle;
  *  \param message actual text being logged.
  */
 typedef std::function<void(debug_log_verbosity level, debug_log_group group, const char* message)> debug_output_function;
+
+/**
+ *  \brief User-defined function called when a new profiling scope is entered.
+ *
+ *  \param type context-specific type of the scope that was entered.
+ *  \param tag descriptive tag of the scope that was entered.
+ */
+typedef std::function<void(scope_type type, const char* tag)> profile_enter_scope_function;
+
+/**
+ *  \brief User-defined function called when the last entered profiling scope is left.
+ */
+typedef std::function<void()> profile_leave_scope_function;
+
+/**
+ *  \brief Holds all callback functions for profiling purposes.
+ */
+struct profile_functions
+{
+	profile_enter_scope_function enter_scope = nullptr;
+	profile_leave_scope_function leave_scope = nullptr;
+};
 
 /**
  *  The scheduler is the heart of the library. Its responsible for managing the 
@@ -78,6 +102,15 @@ public:
      * \return Value indicating the success of this function.
      */
     result set_memory_functions(const memory_functions& functions);
+
+	/**
+	 * \brief Overrides the default profiling functions used by the scheduler.
+	 *
+	 * \param functions Struct containing all the profiling functions to override.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result set_profile_functions(const profile_functions& functions);
 
 	/**
 	 * \brief Provides a function which all debug output will be passed.
@@ -111,6 +144,18 @@ public:
 	 * \return Value indicating the success of this function.
 	 */
 	result set_max_dependencies(size_t max_dependencies);
+
+	/**
+	 * \brief Sets the maximum number of profile scopes that can be tracked.
+	 *
+	 * If you have heavily nested profile scope call graphs, you should increase this value.
+	 * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
+	 *
+	 * \param max_scopes New maximum number of profile scopes.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result set_max_profile_scopes(size_t max_dependencies);
     
     /**
      * \brief Adds a new pool of worker threads to the scheduler.
@@ -214,6 +259,7 @@ private:
 protected:
 
 	friend class job_handle;
+	friend class job_context;
 
 	/** @todo */
 	job_definition& get_job_definition(size_t index);
@@ -263,6 +309,21 @@ protected:
 	/** @todo */
 	result free_fiber(size_t fiber_index, size_t fiber_pool_index);
 
+	/** @todo */
+	void leave_context(job_context& new_context);
+
+	/** @todo */
+	void enter_context(job_context& new_context);
+
+	/** @todo */
+	void switch_context(job_context& new_context);
+
+	/** @todo */
+	result alloc_scope(profile_scope*& output);
+
+	/** @todo */
+	result free_scope(profile_scope* scope);
+
 private:
 
     /** Default memory allocation function */
@@ -300,6 +361,9 @@ private:
 
 	/** Trampolined memory functions that also log allocations. */
 	memory_functions m_memory_functions;
+
+	/** User-defined profiling functions. */
+	profile_functions m_profile_functions;
 
     /** Maximum number of jobs this scheduler can handle concurrently. */
     size_t m_max_jobs = 0;
@@ -370,14 +434,23 @@ private:
 	/** Pool of dependencies to be allocated. */
 	fixed_pool<job_dependency> m_job_dependency_pool;
 
-	/** Thread local storage for a worker threads main fiber. */
-	static thread_local fiber m_worker_fiber;
+	/** Maximum number of profile scopes we can have. */
+	size_t m_max_profile_scopes = 10000;
+
+	/** Pool of profile scopes to be allocated. */
+	fixed_pool<profile_scope> m_profile_scope_pool;
 
 	/** Thread local storage for a worker threads current job. */
 	static thread_local size_t m_worker_job_index;
 
-	/** Thread local storage for flagging of job completed */
+	/** Thread local storage for flagging of job completed. */
 	static thread_local bool m_worker_job_completed;
+
+	/** Thread local storage for the workers job context. */
+	static thread_local job_context m_worker_job_context;
+
+	/** Thread local storage for the workers active job context. */
+	static thread_local job_context* m_worker_active_job_context;
 };
 
 }; /* namespace Jobs */

@@ -170,12 +170,26 @@ public:
 	}
 
 	/** @todo */
-	result free(size_t object)
+	result free(size_t index)
 	{
 		// @todo: make this atomic
 		std::lock_guard<std::mutex> lock(m_access_mutex);
 
-		m_free_object_indices[m_free_object_count] = object;
+		m_free_object_indices[m_free_object_count] = index;
+		m_free_object_count++;
+
+		return result::success;
+	}
+
+	/** @todo */
+	result free(data_type* object)
+	{
+		// @todo: make this atomic
+		std::lock_guard<std::mutex> lock(m_access_mutex);
+
+		size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
+
+		m_free_object_indices[m_free_object_count] = index;
 		m_free_object_count++;
 
 		return result::success;

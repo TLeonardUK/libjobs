@@ -44,7 +44,10 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/${TARGET_SYSTEM}_${TA
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
 
-include_directories(${CMAKE_SOURCE_DIR}/inc)
+include_directories(
+	${CMAKE_SOURCE_DIR}/inc 
+	${CMAKE_SOURCE_DIR}/third_party
+)
 
 # Main library 
 #add_library(libjobs STATIC
@@ -56,6 +59,8 @@ add_executable(libjobs
 	"src/jobs_job.cpp"
 	"src/jobs_enums.cpp"
 )
+add_definitions(-DUSE_PIX=1)
+target_link_libraries(libjobs ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
 
 # If in debug suffix _d to the output name.
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
