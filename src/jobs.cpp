@@ -42,14 +42,14 @@ void job_2_work(jobs::job_context& context)
 //    context.wait_for_job();
 }*/
 
-void enter_scope(jobs::scope_type type, const char* tag)
+void enter_scope(jobs::profile_scope_type type, const char* tag)
 {
 	UINT64 color;
-	if (type == jobs::scope_type::worker)
+	if (type == jobs::profile_scope_type::worker)
 	{
 		color = PIX_COLOR(255, 0, 0);
 	}
-	else if (type == jobs::scope_type::fiber)
+	else if (type == jobs::profile_scope_type::fiber)
 	{
 		color = PIX_COLOR(0, 0, 255);
 	}
@@ -104,7 +104,7 @@ int main()
 	assert(result == jobs::result::success);
 
 	job1.set_tag("Final Job");
-	job1.set_work([=](jobs::job_context& context) {
+	job1.set_work([=]() {
 		printf("Final executed\n"); 
 		Sleep(1000);
 	});
@@ -121,7 +121,7 @@ int main()
 
 		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
 		job2.set_work([=](jobs::job_context& context) {
-			context.enter_scope(jobs::scope_type::user_defined, "Fake Work");
+			context.enter_scope(jobs::profile_scope_type::user_defined, "Fake Work");
 
 			volatile float max = 0;
 			for (int i = 0; i < 100000; i++)
@@ -148,10 +148,13 @@ int main()
 	//		the time until the next sleep timeout. When a new sleep event is queued a signal is sent to wakeup the thread
 	//		to update it's timeout
 	
-	// for event(x)
+	// for wait_for(event)
 	//		we just add a predecessor to the counter, and reduce it once signaled.
 
-	job::event_handle second_stage_event;
+	// for wait_for(job)
+	//		Can we add a dependency while running (cvar mutex?).
+
+	jobs::event_handle second_stage_event;
 	result = scheduler.create_event(second_stage_event);
 	assert(result == jobs::result::success);
 
@@ -165,25 +168,31 @@ int main()
 		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
 		job2.set_stack_size(5 * 1024);
 		job2.set_priority(jobs::priority::low);
-		job2.set_work([=](jobs::job_context& context) {
+		job2.set_work([=]() {
 
-			context.enter_scope(jobs::scope_type::user_defined, "Fake Work");
-			volatile float max = 0;
-			for (int i = 0; i < 100000; i++)
 			{
-				max += atan2(i, i / 2);
+				jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Fake Work");
+
+				volatile double sum = 0;
+				for (int i = 0; i < 100000; i++)
+				{
+					sum += atan2(i, i / 2);
+				}
 			}
-			context.leave_scope();
+			
+			//context.wait(second_stage_event, jobs::timeout::infinite);
+			//context.wait(job, jobs::timeout::infinite);
+			//context.sleep();
 
-			context.wait_for_event(second_stage_event, jobs::timeout::infinite);
-
-			context.enter_scope(jobs::scope_type::user_defined, "Fake Work 2");
-			volatile float max = 0;
-			for (int i = 0; i < 100000; i++)
 			{
-				max += atan2(i, i / 2);
+				jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Fake Work 2");
+
+				volatile double sum = 0;
+				for (int i = 0; i < 100000; i++)
+				{
+					sum += atan2(i, i / 2);
+				}
 			}
-			context.leave_scope();
 
 		});
 

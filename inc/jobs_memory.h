@@ -65,6 +65,8 @@ struct memory_functions
 	memory_free_function user_free = nullptr;
 };
 
+namespace internal {
+
 /**
  *  \brief Holds a fixed number of objects which can be allocated and freed.
  *
@@ -223,6 +225,7 @@ private:
 
 };
 
-}; /* namespace Jobs */
+}; /* namespace internal */
+}; /* namespace jobs */
 
 #endif /* __JOBS_MEMORY_H__ */

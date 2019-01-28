@@ -30,38 +30,25 @@
 
 #include <atomic>
 
+#include "jobs_utils.h"
 #include "jobs_enums.h"
 #include "jobs_scheduler.h"
 #include "jobs_fiber.h"
 
 namespace jobs {
-	
-class job_dependency;
+
+class scheduler;
 
 /**
- * Represents an individual scope in a fibers profiling hierarchy. 
- * This is stored together as a single linked list.
- */
-class profile_scope
-{
-public:
+	*  \brief Entry point for a jobs workload.
+	*/
+typedef std::function<void()> job_entry_point;
 
-	/** @todo */
-	scope_type type;
-
-	/** @todo */
-	static const size_t max_tag_length = 64;
-
-	/** @todo */
-	char tag[max_tag_length];
-
-	/** @todo */
-	profile_scope* next;
-
-	/** @todo */
-	profile_scope* prev;
-
-};
+namespace internal {
+	
+class job_dependency;
+class job_context;
+class profile_scope_definition;
 
 /**
  * Holds the execution context of a job, this provides various functionality to 
@@ -71,7 +58,7 @@ class job_context
 {
 protected:
 
-	friend class scheduler;
+	friend class jobs::scheduler;
 
 	/** @todo */
 	bool has_fiber = false;
@@ -95,13 +82,13 @@ protected:
 	size_t profile_scope_depth;
 
 	/** @todo */
-	profile_scope* profile_stack_head = nullptr;
+	profile_scope_definition* profile_stack_head = nullptr;
 
 	/** @todo */
-	profile_scope* profile_stack_tail = nullptr;
+	profile_scope_definition* profile_stack_tail = nullptr;
 
 	/** @todo */
-	scheduler* scheduler = nullptr;
+	jobs::scheduler* scheduler = nullptr;
 
 public:
 
@@ -118,17 +105,12 @@ public:
 	//result wait_for(job_event evt);
 
 	/** @todo */
-	result enter_scope(scope_type type, const char* tag, ...);
+	result enter_scope(profile_scope_type type, const char* tag, ...);
 
 	/** @todo */
 	result leave_scope();
 
 };
-
-/**
- *  \brief Entry point for a jobs workload.
- */
-typedef std::function<void(job_context& context)> job_entry_point;
 
 /**
  *  \brief Current status of a job.
@@ -191,6 +173,8 @@ public:
 	char tag[max_tag_length];
 
 };
+
+}; /* nemspace internal */
 
 /**
  * \brief Represents an instance of a job that has been created by the scheduler.
@@ -291,6 +275,8 @@ private:
 
 };
 
+namespace internal {
+
 /**
  * Holds an individual dependency of a job, allocated from a pool by the scheduler
  * and joined together as a linked list.
@@ -324,6 +310,51 @@ public:
 
 };
 
-}; /* namespace Jobs */
+/**
+ * Represents an individual scope in a fibers profiling hierarchy.
+ * This is stored together as a single linked list.
+ */
+class profile_scope_definition
+{
+public:
+
+	/** @todo */
+	profile_scope_type type;
+
+	/** @todo */
+	static const size_t max_tag_length = 64;
+
+	/** @todo */
+	char tag[max_tag_length];
+
+	/** @todo */
+	profile_scope_definition* next;
+
+	/** @todo */
+	profile_scope_definition* prev;
+
+};
+
+}; /* namespace internal */
+
+/**
+ * Simple RAII type that enters a profile scope on construction and exits it
+ * on destruction.
+ */
+class profile_scope
+{
+private:
+	internal::job_context* m_context = nullptr;
+
+public:
+
+	/** @todo */
+	profile_scope(jobs::profile_scope_type type, const char* tag);
+
+	/** @todo */
+	~profile_scope();
+};
+
+}; /* namespace jobs */
 
 #endif /* __JOBS_JOB_H__ */

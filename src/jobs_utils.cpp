@@ -19,26 +19,42 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-#include "jobs_enums.h"
+#include "jobs_utils.h"
 
 namespace jobs {
 namespace internal {
 
-const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count] =
+void stopwatch::start()
 {
-	"error",
-	"warning",
-	"message",
-	"verbose",
-};
+	m_start_time = std::chrono::high_resolution_clock::now();
+	m_has_end = false;
+}
 
-const char* debug_log_group_strings[(int)debug_log_group::count] =
+void stopwatch::stop()
 {
-	"worker",
-	"scheduler",
-	"memory",
-	"job",
-};
+	m_end_time = std::chrono::high_resolution_clock::now();
+	m_has_end = true;
+}
+
+size_t stopwatch::get_elapsed_ms()
+{
+	std::chrono::high_resolution_clock::time_point end_time;
+	if (m_has_end)
+	{
+		end_time = m_end_time;
+	}
+	else
+	{
+		end_time = std::chrono::high_resolution_clock::now();
+	}
+
+	float elapsed = std::chrono::duration<float, std::chrono::milliseconds::period>(end_time - m_start_time).count();
+
+	return (size_t)elapsed;
+}
 
 }; /* namespace internal */
+
+const timeout timeout::infinite = timeout(UINT64_MAX);
+
 }; /* namespace jobs */

@@ -93,9 +93,6 @@ enum class debug_log_verbosity
 	count
 };
 
-/** String representation of values in enum debug_log_verbosity. */
-extern const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count];
-
 /**
  *  \brief Semantic group a log message belongs to.
  */
@@ -109,83 +106,26 @@ enum class debug_log_group
 	count
 };
 
-/** String representation of values in enum debug_log_group. */
-extern const char* debug_log_group_strings[(int)debug_log_group::count];
-
 /**
  *  \brief Defines a context-specific type of a profiling scope.
  */
-enum class scope_type
+enum class profile_scope_type
 {
 	worker,			/**< The scope encapsulates scheduling-level work happening outside a fiber. */
 	fiber,			/**< The scope encapsulates job work happening inside a fiber. */
 	user_defined,	/**< The scope was defined by the user. */
 };
 
-/**
- *  \brief Represents a period of time used as a timeout for a blocking function.
- */
-struct timeout
-{
-public:
+namespace internal {
 
-	/** Duration of this timeout in milliseconds. */
-	uint64_t duration;
+	/** String representation of values in enum debug_log_verbosity. */
+	extern const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count];
 
-	/**
-	 *  \brief Constructor
-	 *
-	 *  \param inDuration Duration in milliseconds of this timeout.
-	 */
-	timeout(uint64_t inDuration)
-		: duration(inDuration)
-	{
-	}
+	/** String representation of values in enum debug_log_group. */
+	extern const char* debug_log_group_strings[(int)debug_log_group::count];
 
-	/**
-	 *  \brief Returns true if this timeout is infinite.
-	 *
-	 *  \return true if an infinite timeout.
-	 */
-	bool is_infinite()
-	{
-		return duration == infinite.duration;
-	}
+}; /* namespace internal */
 
-	/** Represents an infinite, non-ending timeout. */
-	static const timeout infinite;
-
-};
-
-/**
- *  \brief Utility class used to time the duration between two points in code.
- */
-struct stopwatch
-{
-public:
-
-	/** @todo */
-	void start();
-
-	/** @todo */
-	void stop();
-
-	/** @todo */
-	size_t get_elapsed_ms();
-
-private:
-
-	/** @todo */
-	std::chrono::high_resolution_clock::time_point m_start_time;
-
-	/** @todo */
-	std::chrono::high_resolution_clock::time_point m_end_time;
-
-	/** @todo */
-	bool m_has_end = false;
-
-};
-
-}; /* namespace Jobs */
+}; /* namespace jobs */
 
 #endif /* __JOBS_ENUM_H__ */

@@ -35,6 +35,7 @@
 #include <functional>
 
 namespace jobs {
+namespace internal {
 
 class thread;
     
@@ -53,8 +54,8 @@ public:
 	/**
 	 * Constructor.
 	 *
-	 * \param memory_function Scheduler defined memory functions used to 
-	 *						  override default memory allocation behaviour.
+	 * \param memory_functions Scheduler defined memory functions used to 
+	 *						   override default memory allocation behaviour.
 	 */
     thread(const memory_functions& memory_functions);
 	
@@ -87,6 +88,7 @@ private:
 
 };
 
-}; /* namespace Jobs */
+}; /* namespace internal */
+}; /* namespace jobs */
 
 #endif /* __JOBS_THREAD_H__ */

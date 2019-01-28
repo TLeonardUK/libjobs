@@ -58,14 +58,18 @@ add_executable(libjobs
 	"src/jobs_fiber.cpp"
 	"src/jobs_job.cpp"
 	"src/jobs_enums.cpp"
+	"src/jobs_event.cpp"
+	"src/jobs_utils.cpp"
 )
 add_definitions(-DUSE_PIX)
 
 # Enable fiber-safe optimizations on msvc build, otherwise it will cache thread_local vars
 # and make various things explode when we switch context's.
 if (MSVC)
-	set(CMAKE_C_FLAGS_RELWITHDEBINFO   "${CMAKE_C_FLAGS_RELWITHDEBINFO} /GT")
-	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GT")
+	set(CMAKE_C_FLAGS_RELWITHDEBINFO	"${CMAKE_C_FLAGS_RELWITHDEBINFO} /GT")
+	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO	"${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GT")
+	set(CMAKE_C_FLAGS_DEBUG				"${CMAKE_C_FLAGS_DEBUG} /GT")
+	set(CMAKE_CXX_FLAGS_DEBUG			"${CMAKE_CXX_FLAGS_DEBUG} /GT")
 endif(MSVC)
 
 target_link_libraries(libjobs ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)

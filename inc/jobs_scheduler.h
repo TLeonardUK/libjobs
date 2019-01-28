@@ -31,6 +31,7 @@
 #include "jobs_enums.h"
 #include "jobs_memory.h"
 #include "jobs_job.h"
+#include "jobs_utils.h"
 
 #include <functional>
 #include <condition_variable>
@@ -38,13 +39,20 @@
 
 namespace jobs {
     
-class thread;
-class fiber;
-class profile_scope;
+class job_handle;
+class event_handle;
+
+namespace internal {
+	
+class profile_scope_definition;
 class job_definition;
 class job_dependency;
 class job_context;
-class job_handle;
+class thread;
+class fiber;
+class event_definition;
+
+}; /* namespace internal */
 
 /**
  *  \brief User-defined callback function for debugging information.
@@ -64,7 +72,7 @@ typedef std::function<void(debug_log_verbosity level, debug_log_group group, con
  *  \param type context-specific type of the scope that was entered.
  *  \param tag descriptive tag of the scope that was entered.
  */
-typedef std::function<void(scope_type type, const char* tag)> profile_enter_scope_function;
+typedef std::function<void(profile_scope_type type, const char* tag)> profile_enter_scope_function;
 
 /**
  *  \brief User-defined function called when the last entered profiling scope is left.
@@ -156,7 +164,18 @@ public:
 	 * \return Value indicating the success of this function.
 	 */
 	result set_max_profile_scopes(size_t max_dependencies);
-    
+
+	/**
+	 * \brief Sets the maximum number of events that can be created and used for syncronization.
+	 *
+	 * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
+	 *
+	 * \param max_events New maximum number of events.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result set_max_events(size_t max_events);
+
     /**
      * \brief Adds a new pool of worker threads to the scheduler.
      *
@@ -212,11 +231,32 @@ public:
 	 */
 	result create_job(job_handle& instance);
 
+	/**
+	 * \brief Creates a new event that can be used for job syncronization.
+	 *
+	 * \param instance On success the created event will be stored here.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result create_event(event_handle& instance);
+
 	/** @todo */
 	result wait_until_idle(timeout wait_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
 	/** @todo */
 	bool is_idle() const;
+
+	/**
+	 * \brief Gets the context of the job currently running on calling thread.
+	 *
+	 * Generally this should not need to be called by user-code. Rather the wrappers that
+	 * interface with the context (profile_scope, job_handle, etc) should be preferred. 
+	 * Its public on the off chance that user-code wants finer-grain control over things 
+	 * like profiling scope.
+	 *
+	 * \return Context of the currently running job, or nullptr if no job is running on this thread.
+	 */
+	static internal::job_context* get_active_job_context();
 
 private:
 
@@ -230,7 +270,7 @@ private:
 		size_t thread_count = 0;
 
 		/** Pool of threads. */
-		fixed_pool<thread> pool;
+		internal::fixed_pool<internal::thread> pool;
 	};
 
 	/** Internal representation of a fiber pool. */
@@ -243,7 +283,7 @@ private:
 		size_t fiber_count = 0;
 
 		/** Pool of fibers. */
-		fixed_pool<fiber> pool;
+		internal::fixed_pool<internal::fiber> pool;
 	};
 
 	/** Internal representation of a queue of pending tasks */
@@ -259,10 +299,11 @@ private:
 protected:
 
 	friend class job_handle;
-	friend class job_context;
+	friend class internal::job_context;
+	friend class event_handle;
 
 	/** @todo */
-	job_definition& get_job_definition(size_t index);
+	internal::job_definition& get_job_definition(size_t index);
 
 	/** @todo */
 	void free_job(size_t index);
@@ -301,28 +342,37 @@ protected:
 	result add_job_dependency(size_t successor, size_t predecessor);
 
 	/** @todo */
-	void allocate_job(size_t index);
-
-	/** @todo */
 	result allocate_fiber(size_t required_stack_size, size_t& fiber_index, size_t& fiber_pool_index);
 
 	/** @todo */
 	result free_fiber(size_t fiber_index, size_t fiber_pool_index);
 
 	/** @todo */
-	void leave_context(job_context& new_context);
+	void leave_context(internal::job_context& new_context);
 
 	/** @todo */
-	void enter_context(job_context& new_context);
+	void enter_context(internal::job_context& new_context);
 
 	/** @todo */
-	void switch_context(job_context& new_context);
+	void switch_context(internal::job_context& new_context);
 
 	/** @todo */
-	result alloc_scope(profile_scope*& output);
+	result alloc_scope(internal::profile_scope_definition*& output);
 
 	/** @todo */
-	result free_scope(profile_scope* scope);
+	result free_scope(internal::profile_scope_definition* scope);
+
+	/** @todo */
+	internal::event_definition& get_event_definition(size_t index);
+
+	/** @todo */
+	void free_event(size_t index);
+
+	/** @todo */
+	void increase_event_ref_count(size_t index);
+
+	/** @todo */
+	void decrease_event_ref_count(size_t index);
 
 private:
 
@@ -333,7 +383,7 @@ private:
     static void default_free(void* ptr);
 
 	/** Entry point for all worker threads. */
-	void worker_entry_point(size_t pool_index, size_t worker_index, const thread& this_thread, const thread_pool& thread_pool);
+	void worker_entry_point(size_t pool_index, size_t worker_index, const internal::thread& this_thread, const thread_pool& thread_pool);
 
 	/** Entry point for all worker job fibers. */
 	void worker_fiber_entry_point(size_t pool_index, size_t worker_index);
@@ -390,7 +440,7 @@ private:
 	bool m_destroying = false;
 
 	/** Pool of jobs that can be allocated. */
-	fixed_pool<job_definition> m_job_pool;
+	internal::fixed_pool<internal::job_definition> m_job_pool;
 
 	/** Function to pass all debug output */
 	debug_output_function m_debug_output_function = nullptr;
@@ -432,13 +482,19 @@ private:
 	size_t m_max_dependencies = 1024;
 
 	/** Pool of dependencies to be allocated. */
-	fixed_pool<job_dependency> m_job_dependency_pool;
+	internal::fixed_pool<internal::job_dependency> m_job_dependency_pool;
 
 	/** Maximum number of profile scopes we can have. */
 	size_t m_max_profile_scopes = 10000;
 
 	/** Pool of profile scopes to be allocated. */
-	fixed_pool<profile_scope> m_profile_scope_pool;
+	internal::fixed_pool<internal::profile_scope_definition> m_profile_scope_pool;
+
+	/** Maximum number of events we can have. */
+	size_t m_max_events = 1000;
+
+	/** Pool of events that can be allocated. */
+	internal::fixed_pool<internal::event_definition> m_event_pool;
 
 	/** Thread local storage for a worker threads current job. */
 	static thread_local size_t m_worker_job_index;
@@ -447,12 +503,12 @@ private:
 	static thread_local bool m_worker_job_completed;
 
 	/** Thread local storage for the workers job context. */
-	static thread_local job_context m_worker_job_context;
+	static thread_local internal::job_context m_worker_job_context;
 
 	/** Thread local storage for the workers active job context. */
-	static thread_local job_context* m_worker_active_job_context;
+	static thread_local internal::job_context* m_worker_active_job_context;
 };
 
-}; /* namespace Jobs */
+}; /* namespace jobs */
 
 #endif /* __JOBS_SCHEDULER_H__ */

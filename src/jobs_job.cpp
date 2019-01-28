@@ -26,6 +26,7 @@
 #include <algorithm>
 
 namespace jobs {
+namespace internal {
 
 job_context::job_context()
 {
@@ -46,9 +47,9 @@ void job_context::reset()
 	assert(has_fiber == false);
 }
 
-result job_context::enter_scope(scope_type type, const char* tag, ...)
+result job_context::enter_scope(profile_scope_type type, const char* tag, ...)
 {
-	profile_scope* scope = nullptr;
+	profile_scope_definition* scope = nullptr;
 	result res = scheduler->alloc_scope(scope);
 	if (res != result::success)
 	{
@@ -61,8 +62,8 @@ result job_context::enter_scope(scope_type type, const char* tag, ...)
 	// @todo
 	// microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
 	// we're just memsetting this here. Needs to be done correctly.
-	memset(scope->tag, 0, profile_scope::max_tag_length); 
-	vsnprintf(scope->tag, profile_scope::max_tag_length - 1, tag, list);
+	memset(scope->tag, 0, profile_scope_definition::max_tag_length); 
+	vsnprintf(scope->tag, profile_scope_definition::max_tag_length - 1, tag, list);
 
 	va_end(list);
 
@@ -106,7 +107,7 @@ result job_context::leave_scope()
 		profile_stack_head = nullptr;
 	}	
 
-	profile_scope* original = profile_stack_tail;	
+	profile_scope_definition* original = profile_stack_tail;	
 
 	//printf("[leave_scope:%o] %s\n", profile_scope_depth - 1, original->tag);
 
@@ -143,6 +144,8 @@ void job_definition::reset()
 	assert(first_predecessor == nullptr);
 	assert(first_successor == nullptr);
 }
+
+}; // namespace internal
 
 job_handle::job_handle(scheduler* scheduler, size_t index)
 	: m_scheduler(scheduler)
@@ -207,7 +210,7 @@ result job_handle::set_work(const job_entry_point& job_work)
 		return result::not_mutable;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
 	definition.work = job_work;
 
 	return result::success;
@@ -224,11 +227,11 @@ result job_handle::set_tag(const char* tag)
 		return result::not_mutable;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
 	size_t tag_len = strlen(tag);
-	size_t to_copy = min(tag_len, job_definition::max_tag_length - 1);
+	size_t to_copy = min(tag_len, internal::job_definition::max_tag_length - 1);
 #if JOBS_PLATFORM_WINDOWS
-	strncpy_s(definition.tag, job_definition::max_tag_length, tag, to_copy);
+	strncpy_s(definition.tag, internal::job_definition::max_tag_length, tag, to_copy);
 #else
 	strncpy(definition.tag, tag, to_copy);
 #endif
@@ -248,7 +251,7 @@ result job_handle::set_stack_size(size_t stack_size)
 		return result::not_mutable;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
 	definition.stack_size = stack_size;
 
 	return result::success;
@@ -265,7 +268,7 @@ result job_handle::set_priority(priority job_priority)
 		return result::not_mutable;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
 	definition.job_priority = job_priority;
 
 	return result::success;
@@ -338,8 +341,8 @@ bool job_handle::is_pending()
 		return false;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
-	return (definition.status == job_status::pending);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
+	return (definition.status == internal::job_status::pending);
 }
 
 bool job_handle::is_running()
@@ -349,8 +352,8 @@ bool job_handle::is_running()
 		return false;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
-	return (definition.status == job_status::running);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
+	return (definition.status == internal::job_status::running);
 }
 
 bool job_handle::is_complete()
@@ -360,8 +363,8 @@ bool job_handle::is_complete()
 		return false;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
-	return (definition.status == job_status::completed);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
+	return (definition.status == internal::job_status::completed);
 }
 
 bool job_handle::is_mutable()
@@ -371,10 +374,10 @@ bool job_handle::is_mutable()
 		return false;
 	}
 
-	job_definition& definition = m_scheduler->get_job_definition(m_index);
+	internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
 
-	return definition.status == job_status::initialized || 
-		   definition.status == job_status::completed;
+	return definition.status == internal::job_status::initialized ||
+		   definition.status == internal::job_status::completed;
 }
 
 bool job_handle::is_valid()
@@ -416,4 +419,26 @@ bool job_handle::operator!=(const job_handle& rhs) const
 	return !(*this == rhs);
 }
 
-}; /* namespace Jobs */
+profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
+{
+	internal::job_context* context = scheduler::get_active_job_context();
+	assert(context != nullptr);
+
+	context->enter_scope(type, tag);
+
+	m_context = context;
+}
+
+profile_scope::~profile_scope()
+{
+	internal::job_context* context = scheduler::get_active_job_context();
+	assert(context != nullptr);
+
+	// Not sure if this situation is even possible, but make sure we always
+	// leave on the same context we enter on.
+	assert(context == m_context);
+
+	context->leave_scope();
+}
+
+}; /* namespace jobs */

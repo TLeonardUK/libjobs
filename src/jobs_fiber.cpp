@@ -24,6 +24,7 @@
 #include <cassert>
 
 namespace jobs {
+namespace internal {
 
 fiber::fiber()
 {
@@ -104,4 +105,5 @@ VOID CALLBACK fiber::trampoline_entry_point(PVOID lpParameter)
 }
 #endif
 
-}; /* namespace Jobs */
+}; /* namespace internal */
+}; /* namespace jobs */

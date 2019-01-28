@@ -35,6 +35,7 @@
 #include <functional>
 
 namespace jobs {
+namespace internal {
     
 /**
  *  \brief Entry point for a fiber.
@@ -121,6 +122,7 @@ private:
 
 };
 
-}; /* namespace Jobs */
+}; /* namespace internal */
+}; /* namespace jobs */
 
 #endif /* __JOBS_FIBER_H__ */

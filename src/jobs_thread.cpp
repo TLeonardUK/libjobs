@@ -24,6 +24,7 @@
 #include <cassert>
 
 namespace jobs {
+namespace internal {
 
 thread::thread(const memory_functions& memory_functions)
 	: m_memory_functions(memory_functions)
@@ -50,4 +51,5 @@ void thread::join()
 	m_thread.join();
 }
 
-}; /* namespace Jobs */
+}; /* namespace internal */
+}; /* namespace jobs */
