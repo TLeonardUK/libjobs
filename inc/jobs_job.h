@@ -46,6 +46,7 @@ typedef std::function<void()> job_entry_point;
 
 namespace internal {
 	
+class job_definition;
 class job_dependency;
 class job_context;
 class profile_scope_definition;
@@ -90,6 +91,9 @@ protected:
 	/** @todo */
 	jobs::scheduler* scheduler = nullptr;
 
+	/** @todo */
+	job_definition* job_def = nullptr;
+
 public:
 
 	/** @todo */
@@ -120,6 +124,7 @@ enum class job_status
 	initialized,	/**< Job is initialized and ready for dispatch */
 	pending,		/**< Job is pending execution */
 	running,		/**< Job is running on a worker */
+	waiting,		/**< Job is waiting for an event. */
 	completed,		/**< Job has completed running */
 };
 
@@ -153,6 +158,10 @@ public:
 
 	/** @todo */
 	job_status status;
+
+	// Note: dependencies are only safe to modify in two situations:
+	//			- when job is not running and is mutable
+	//			- when job is running and is being modified by the fiber executing it (when not queued).
 
 	/** @todo */
 	job_dependency* first_predecessor = nullptr;

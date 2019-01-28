@@ -88,11 +88,12 @@ int main()
     scheduler.set_max_jobs(200000);
 	scheduler.set_max_dependencies(200000);
 	scheduler.set_max_profile_scopes(200000);
-	scheduler.set_max_events(1000);
+	scheduler.set_max_events(10000);
+	scheduler.set_max_callbacks(10000);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
 	scheduler.add_thread_pool(10, jobs::priority::all_but_slow);
-    scheduler.add_fiber_pool(100, 64 * 1024);
-    scheduler.add_fiber_pool(1000, 1 * 1024);
+	scheduler.add_fiber_pool(100, 1 * 1024);
+	scheduler.add_fiber_pool(10000, 32 * 1024);
     scheduler.add_fiber_pool(10, 2 * 1024 * 1024);
 
     jobs::result result = scheduler.init();
@@ -108,7 +109,7 @@ int main()
 		printf("Final executed\n"); 
 		Sleep(1000);
 	});
-	job1.set_stack_size(5 * 1024);
+	job1.set_stack_size(32 * 1024);
 	job1.set_priority(jobs::priority::low);
 
 	/*
@@ -154,11 +155,15 @@ int main()
 	// for wait_for(job)
 	//		Can we add a dependency while running (cvar mutex?).
 
+	// for wait_for(polled_event)
+	//		behaves same as wait_for except we have a thread that polls these events periodically
+	//		to know when to wake up jobs. Useful for things like polling for io/net?
+
 	jobs::event_handle second_stage_event;
-	result = scheduler.create_event(second_stage_event);
+	result = scheduler.create_event(second_stage_event, false);
 	assert(result == jobs::result::success);
 
-	for (int i = 0; i < 100000; i++)
+	for (int i = 0; i < 10000; i++)
 	{
 		// Job 2
 		jobs::job_handle job2;
@@ -166,29 +171,46 @@ int main()
 		assert(result == jobs::result::success);
 
 		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
-		job2.set_stack_size(5 * 1024);
+		job2.set_stack_size(32 * 1024);
 		job2.set_priority(jobs::priority::low);
 		job2.set_work([=]() {
 
+			jobs::scheduler::sleep(5000);
+			//jobs::scheduler::sleep((i/16) * 5);
+
+			//printf("Start fake work 1\n");
 			{
 				jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Fake Work");
 
 				volatile double sum = 0;
-				for (int i = 0; i < 100000; i++)
+				for (int i = 0; i < 200000; i++)
 				{
 					sum += atan2(i, i / 2);
 				}
 			}
-			
-			//context.wait(second_stage_event, jobs::timeout::infinite);
-			//context.wait(job, jobs::timeout::infinite);
-			//context.sleep();
 
+			{
+				jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Sleep Work");
+
+				volatile double sum = 0;
+				for (int i = 0; i < 200000; i++)
+				{
+					sum += atan2(i, i / 2);
+				}
+
+				jobs::scheduler::sleep(1000);
+			}
+
+			//second_stage_event.wait(jobs::timeout::infinite);
+			//job.wait(jobs::timeout::infinite);
+			//jobs::scheduler::sleep((i/16) * 5);
+
+			//printf("Start fake work 2\n");
 			{
 				jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Fake Work 2");
 
 				volatile double sum = 0;
-				for (int i = 0; i < 100000; i++)
+				for (int i = 0; i < 200000; i++)
 				{
 					sum += atan2(i, i / 2);
 				}

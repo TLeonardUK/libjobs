@@ -56,6 +56,12 @@ public:
 	/** @todo */
 	std::atomic<size_t> ref_count;
 
+	/** @todo */
+	std::atomic<bool> signalled;
+
+	/** @todo */
+	bool auto_reset;
+
 };
 
 }; /* namespace internal */

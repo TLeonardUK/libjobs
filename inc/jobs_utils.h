@@ -48,7 +48,7 @@ public:
 	void stop();
 
 	/** @todo */
-	size_t get_elapsed_ms();
+	uint64_t get_elapsed_ms();
 
 private:
 
@@ -74,6 +74,14 @@ public:
 
 	/** Duration of this timeout in milliseconds. */
 	uint64_t duration;
+
+	/**
+	 *  \brief Default constructor
+	 */
+	timeout()
+		: duration(0)
+	{
+	}
 
 	/**
 	 *  \brief Constructor

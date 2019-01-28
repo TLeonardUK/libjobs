@@ -56,6 +56,7 @@ enum class result
 	already_dispatched,		/**< Job has already been dispatched and cannot be again until complete. */
 	not_mutable,			/**< Object is in a state where it is not currently mutable (dispatch/in-progress). */
 	timeout,				/**< Operation timed out before completion. */
+	not_in_job,				/**< Attempt to execution a function that can only be run under a jobs context. */
 };
 
 /**

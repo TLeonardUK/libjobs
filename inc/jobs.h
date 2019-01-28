@@ -28,6 +28,7 @@
 #ifndef __JOBS_H__
 #define __JOBS_H__
 
+#include "jobs_callback_scheduler.h"
 #include "jobs_enums.h"
 #include "jobs_event.h"
 #include "jobs_fiber.h"

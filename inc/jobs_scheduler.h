@@ -32,6 +32,7 @@
 #include "jobs_memory.h"
 #include "jobs_job.h"
 #include "jobs_utils.h"
+#include "jobs_callback_scheduler.h"
 
 #include <functional>
 #include <condition_variable>
@@ -176,6 +177,18 @@ public:
 	 */
 	result set_max_events(size_t max_events);
 
+	/**
+	 * \brief Sets the maximum number of latent callbacks that can be scheduld and used for syncronization.
+	 *
+	 * A latent callback is created for each wait/sleep call that is provided with a timeout value.
+	 * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
+	 *
+	 * \param max_callbacks New maximum number of callbacks.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result set_max_callbacks(size_t max_callbacks);
+
     /**
      * \brief Adds a new pool of worker threads to the scheduler.
      *
@@ -235,16 +248,20 @@ public:
 	 * \brief Creates a new event that can be used for job syncronization.
 	 *
 	 * \param instance On success the created event will be stored here.
+	 * \param auto_reset If the event automatically resets after being signalled, or needs to be manually reset.
 	 *
 	 * \return Value indicating the success of this function.
 	 */
-	result create_event(event_handle& instance);
+	result create_event(event_handle& instance, bool auto_reset = false);
 
 	/** @todo */
 	result wait_until_idle(timeout wait_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
 	/** @todo */
 	bool is_idle() const;
+
+	/** @todo */
+	static result sleep(timeout duration = timeout::infinite);
 
 	/**
 	 * \brief Gets the context of the job currently running on calling thread.
@@ -257,6 +274,18 @@ public:
 	 * \return Context of the currently running job, or nullptr if no job is running on this thread.
 	 */
 	static internal::job_context* get_active_job_context();
+
+	/**
+	 * \brief Gets the definition of the job currently running on calling thread.
+	 *
+	 * Generally this should not need to be called by user-code. Rather the wrappers that
+	 * interface with the context (profile_scope, job_handle, etc) should be preferred.
+	 * Its public on the off chance that user-code wants finer-grain control over things
+	 * like profiling scope.
+	 *
+	 * \return Definition of the currently running job, or nullptr if no job is running on this thread.
+	 */
+	static internal::job_definition* get_active_job_definition();
 
 private:
 
@@ -299,8 +328,9 @@ private:
 protected:
 
 	friend class job_handle;
-	friend class internal::job_context;
 	friend class event_handle;
+	friend class internal::job_context;
+	friend class internal::callback_scheduler;
 
 	/** @todo */
 	internal::job_definition& get_job_definition(size_t index);
@@ -373,6 +403,9 @@ protected:
 
 	/** @todo */
 	void decrease_event_ref_count(size_t index);
+
+	/** @todo */
+	void notify_job_available();
 
 private:
 
@@ -495,6 +528,12 @@ private:
 
 	/** Pool of events that can be allocated. */
 	internal::fixed_pool<internal::event_definition> m_event_pool;
+
+	/** Maximum number of callbacks we can have. */
+	size_t m_max_callbacks = 1000;
+
+	/** Instance responsable for queueing and calling latent callbacks. */
+	internal::callback_scheduler m_callback_scheduler;
 
 	/** Thread local storage for a worker threads current job. */
 	static thread_local size_t m_worker_job_index;

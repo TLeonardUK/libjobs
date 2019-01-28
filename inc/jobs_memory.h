@@ -203,6 +203,18 @@ public:
 		return &m_objects[index];
 	}
 
+	/** @todo */
+	size_t count()
+	{
+		return m_capacity - m_free_object_count;
+	}
+
+	/** @todo */
+	size_t capacity()
+	{
+		return m_capacity;
+	}
+
 private:
 
 	/** @todo */

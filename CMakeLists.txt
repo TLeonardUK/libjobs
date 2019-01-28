@@ -53,6 +53,7 @@ include_directories(
 #add_library(libjobs STATIC
 add_executable(libjobs
 	"src/jobs.cpp"
+	"src/jobs_callback_scheduler.cpp"
 	"src/jobs_scheduler.cpp"
 	"src/jobs_thread.cpp"
 	"src/jobs_fiber.cpp"

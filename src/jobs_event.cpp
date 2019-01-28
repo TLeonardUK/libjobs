@@ -33,6 +33,7 @@ event_definition::event_definition()
 void event_definition::reset()
 {
 	ref_count = 0;	
+	auto_reset = false;
 }
 
 }; /* namespace internal */
@@ -89,14 +90,44 @@ void event_handle::decrease_ref()
 	}
 }
 
+// wait()
+// do-stuff
+// wait()
+// 
+// on signal all jobs are picked up and manage to get to next wait()
+// before event is reset? Just set signalled state until after 
+
 result event_handle::wait(timeout in_timeout)
-{
+{/*
+	// Already signalled, just return.
+	internal::event_definition& def = m_scheduler->get_event_definition(m_index);
+	if (def.signalled)
+	{
+		return result::success;
+	}
+
+	// @todo if we are already signaled and not auto-reset, just return.
+	internal::job_context* context = m_scheduler->get_active_job_context();
+	
+	// If we have a job context, adds this event to its dependencies and put it to sleep.
+	if (context != nullptr)
+	{
+	}
+	// If we have no job context, we just have to do a blocking wait.
+	else
+	{
+	}
+*/
+
 	// @todo
 	return result::success;
 }
 
 result event_handle::signal()
 {
+	// Go through each job that is waiting for us and remove us from its dependencies.
+	// @todo
+
 	// @todo
 	return result::success;
 }

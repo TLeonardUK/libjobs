@@ -36,7 +36,7 @@ void stopwatch::stop()
 	m_has_end = true;
 }
 
-size_t stopwatch::get_elapsed_ms()
+uint64_t stopwatch::get_elapsed_ms()
 {
 	std::chrono::high_resolution_clock::time_point end_time;
 	if (m_has_end)
@@ -50,7 +50,7 @@ size_t stopwatch::get_elapsed_ms()
 
 	float elapsed = std::chrono::duration<float, std::chrono::milliseconds::period>(end_time - m_start_time).count();
 
-	return (size_t)elapsed;
+	return (uint64_t)elapsed;
 }
 
 }; /* namespace internal */
