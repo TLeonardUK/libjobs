@@ -123,13 +123,13 @@ public:
  */
 enum class job_status
 {
-    initialized,		/**< Job is initialized and ready for dispatch */
-    pending,			/**< Job is pending execution */
-    running,			/**< Job is running on a worker */
-    sleeping,			/**< Job is sleeping. */
-    waiting_on_event,	/**< Job is waiting for an event to signal. */
-    waiting_on_job,		/**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
-    completed,			/**< Job has completed running */
+    initialized,         /**< Job is initialized and ready for dispatch */
+    pending,             /**< Job is pending execution */
+    running,             /**< Job is running on a worker */
+    sleeping,            /**< Job is sleeping. */
+    waiting_on_event,    /**< Job is waiting for an event to signal. */
+    waiting_on_job,      /**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
+    completed,           /**< Job has completed running */
 };
 
 }; /* nemspace internal */
@@ -249,7 +249,7 @@ public:
     /** @todo */
     void reset();
 
-public:	
+public:    
 
     /** @todo */
     std::atomic<size_t> ref_count;
@@ -273,8 +273,8 @@ public:
     job_handle wait_job;
 
     // Note: dependencies are only safe to modify in two situations:
-    //			- when job is not running and is mutable
-    //			- when job is running and is being modified by the fiber executing it (when not queued).
+    //            - when job is not running and is mutable
+    //            - when job is running and is being modified by the fiber executing it (when not queued).
 
     /** @todo */
     job_dependency* first_predecessor = nullptr;
