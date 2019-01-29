@@ -34,6 +34,7 @@
 #include "jobs_enums.h"
 #include "jobs_scheduler.h"
 #include "jobs_fiber.h"
+#include "jobs_event.h"
 
 namespace jobs {
 
@@ -60,6 +61,7 @@ class job_context
 protected:
 
 	friend class jobs::scheduler;
+	friend class jobs::event_handle;
 
 	/** @todo */
 	bool has_fiber = false;
@@ -121,66 +123,13 @@ public:
  */
 enum class job_status
 {
-	initialized,	/**< Job is initialized and ready for dispatch */
-	pending,		/**< Job is pending execution */
-	running,		/**< Job is running on a worker */
-	waiting,		/**< Job is waiting for an event. */
-	completed,		/**< Job has completed running */
-};
-
-/**
- * Encapsulates all the settings required to dispatch and run an instance of a job. This
- * is used for internal storage, and shouldn't ever need to be touched by outside code.
- */
-class job_definition
-{
-public:
-
-	/** @todo */
-	job_definition();
-
-	/** @todo */
-	void reset();
-
-public:	
-
-	/** @todo */
-	std::atomic<size_t> ref_count;
-
-	/** @todo */
-	job_entry_point work;
-
-	/** @todo */
-	size_t stack_size;
-
-	/** @todo */
-	priority job_priority;
-
-	/** @todo */
-	job_status status;
-
-	// Note: dependencies are only safe to modify in two situations:
-	//			- when job is not running and is mutable
-	//			- when job is running and is being modified by the fiber executing it (when not queued).
-
-	/** @todo */
-	job_dependency* first_predecessor = nullptr;
-
-	/** @todo */
-	job_dependency* first_successor = nullptr;
-
-	/** @todo */
-	std::atomic<size_t> pending_predecessors;
-
-	/** @todo */
-	job_context context;
-
-	/** @todo */
-	static const size_t max_tag_length = 64;
-
-	/** @todo */
-	char tag[max_tag_length];
-
+	initialized,		/**< Job is initialized and ready for dispatch */
+	pending,			/**< Job is pending execution */
+	running,			/**< Job is running on a worker */
+	sleeping,			/**< Job is sleeping. */
+	waiting_on_event,	/**< Job is waiting for an event to signal. */
+	waiting_on_job,		/**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
+	completed,			/**< Job has completed running */
 };
 
 }; /* nemspace internal */
@@ -188,7 +137,7 @@ public:
 /**
  * \brief Represents an instance of a job that has been created by the scheduler.
  *
- * Job data is owned by the scheduler, be careful accessing handles if 
+ * Job data is owned by the scheduler, be careful accessing handles if
  * the scheduler has been destroyed.
  */
 class job_handle
@@ -285,6 +234,67 @@ private:
 };
 
 namespace internal {
+
+/**
+ * Encapsulates all the settings required to dispatch and run an instance of a job. This
+ * is used for internal storage, and shouldn't ever need to be touched by outside code.
+ */
+class job_definition
+{
+public:
+
+	/** @todo */
+	job_definition();
+
+	/** @todo */
+	void reset();
+
+public:	
+
+	/** @todo */
+	std::atomic<size_t> ref_count;
+
+	/** @todo */
+	job_entry_point work;
+
+	/** @todo */
+	size_t stack_size;
+
+	/** @todo */
+	priority job_priority;
+
+	/** @todo */
+	std::atomic<job_status> status;
+
+	/** @todo */
+	event_handle wait_event;
+	
+	/** @todo */
+	job_handle wait_job;
+
+	// Note: dependencies are only safe to modify in two situations:
+	//			- when job is not running and is mutable
+	//			- when job is running and is being modified by the fiber executing it (when not queued).
+
+	/** @todo */
+	job_dependency* first_predecessor = nullptr;
+
+	/** @todo */
+	job_dependency* first_successor = nullptr;
+
+	/** @todo */
+	std::atomic<size_t> pending_predecessors;
+
+	/** @todo */
+	job_context context;
+
+	/** @todo */
+	static const size_t max_tag_length = 64;
+
+	/** @todo */
+	char tag[max_tag_length];
+
+};
 
 /**
  * Holds an individual dependency of a job, allocated from a pool by the scheduler

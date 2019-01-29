@@ -89,11 +89,12 @@ int main()
 	scheduler.set_max_dependencies(200000);
 	scheduler.set_max_profile_scopes(200000);
 	scheduler.set_max_events(10000);
-	scheduler.set_max_callbacks(10000);
+	scheduler.set_max_callbacks(20000);
 	scheduler.add_thread_pool(1, jobs::priority::slow);
-	scheduler.add_thread_pool(10, jobs::priority::all_but_slow);
+//	scheduler.add_thread_pool(12, jobs::priority::all_but_slow);
+	scheduler.add_thread_pool(1, jobs::priority::all_but_slow);
 	scheduler.add_fiber_pool(100, 1 * 1024);
-	scheduler.add_fiber_pool(10000, 32 * 1024);
+	scheduler.add_fiber_pool(10000, 128 * 1024);
     scheduler.add_fiber_pool(10, 2 * 1024 * 1024);
 
     jobs::result result = scheduler.init();
@@ -107,10 +108,23 @@ int main()
 	job1.set_tag("Final Job");
 	job1.set_work([=]() {
 		printf("Final executed\n"); 
-		Sleep(1000);
 	});
-	job1.set_stack_size(32 * 1024);
+	job1.set_stack_size(128 * 1024);
 	job1.set_priority(jobs::priority::low);
+
+	// Wait job
+	jobs::job_handle wait_job;
+	result = scheduler.create_job(wait_job);
+	assert(result == jobs::result::success);
+
+	wait_job.set_tag("Wait Job");
+	wait_job.set_work([]() {
+		printf("Waiting ...\n");
+		jobs::scheduler::sleep(1000 * 5);
+		printf("Wait executed\n");
+	});
+	wait_job.set_stack_size(128 * 1024);
+	wait_job.set_priority(jobs::priority::high);
 
 	/*
 	for (int i = 0; i < 100000; i++)
@@ -144,14 +158,6 @@ int main()
 	}
 	*/
 
-	// for sleep(x)
-	//		have additional thread dedicated to firing the sleep event. It always sleeps on a cvar with the timeout being
-	//		the time until the next sleep timeout. When a new sleep event is queued a signal is sent to wakeup the thread
-	//		to update it's timeout
-	
-	// for wait_for(event)
-	//		we just add a predecessor to the counter, and reduce it once signaled.
-
 	// for wait_for(job)
 	//		Can we add a dependency while running (cvar mutex?).
 
@@ -159,9 +165,9 @@ int main()
 	//		behaves same as wait_for except we have a thread that polls these events periodically
 	//		to know when to wake up jobs. Useful for things like polling for io/net?
 
-	jobs::event_handle second_stage_event;
-	result = scheduler.create_event(second_stage_event, false);
-	assert(result == jobs::result::success);
+	//jobs::event_handle second_stage_event;
+	////result = scheduler.create_event(second_stage_event, false);
+	//assert(result == jobs::result::success);
 
 	for (int i = 0; i < 10000; i++)
 	{
@@ -171,14 +177,13 @@ int main()
 		assert(result == jobs::result::success);
 
 		job2.set_tag(("Sub-job " + std::to_string(i)).c_str());
-		job2.set_stack_size(32 * 1024);
+		job2.set_stack_size(128 * 1024);
 		job2.set_priority(jobs::priority::low);
-		job2.set_work([=]() {
+		job2.set_work([&]() {
 
-			jobs::scheduler::sleep(5000);
+			//jobs::scheduler::sleep(5000);
 			//jobs::scheduler::sleep((i/16) * 5);
 
-			//printf("Start fake work 1\n");
 			{
 				jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Fake Work");
 
@@ -198,11 +203,14 @@ int main()
 					sum += atan2(i, i / 2);
 				}
 
-				jobs::scheduler::sleep(1000);
+			//	jobs::scheduler::sleep(1000);
 			}
 
 			//second_stage_event.wait(jobs::timeout::infinite);
-			//job.wait(jobs::timeout::infinite);
+			//second_stage_event.wait(2 * 1000);
+			//printf("Sleep\n");
+			wait_job.wait(jobs::timeout::infinite);
+			//printf("Woke up\n");
 			//jobs::scheduler::sleep((i/16) * 5);
 
 			//printf("Start fake work 2\n");
@@ -223,11 +231,13 @@ int main()
 	}
 
 	// Dispatch and wait
+	wait_job.dispatch();
 	job1.dispatch();
 
 	// Wait before second stage.
-	Sleep(10 * 1000);
-	second_stage_event.signal();
+	//scheduler.sleep(10 * 1000);
+	//printf("Signalling event\n");
+	//second_stage_event.signal();
 
 	scheduler.wait_until_idle();
 

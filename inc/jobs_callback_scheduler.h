@@ -55,6 +55,9 @@ struct callback_definition
 	bool active = false;
 
 	/** @todo */
+	size_t generation = 0;
+
+	/** @todo */
 	stopwatch stopwatch;
 
 	/** @todo */
@@ -92,11 +95,21 @@ public:
 	 * \brief Schedules a new callback after the given timeout.
 	 *
 	 * \param duration how long before callback is invoked.
+	 * \param handle handle of scheduled callback, can be used to cancel it later.
 	 * \param callback callback that is run after timeout.
 	 *
 	 * \return Value indicating the success of this function.
 	 */
-	result schedule(timeout duration, const callback_scheduler_function& callback);
+	result schedule(timeout duration, size_t& handle, const callback_scheduler_function& callback);
+
+	/**
+	 * \brief Cancels a previously scheduled callback.
+	 *
+	 * \param handle handle of callback to cancel.
+	 *
+	 * \return Value indicating the success of this function.
+	 */
+	result cancel(size_t handle);
 
 private:
 

@@ -138,6 +138,9 @@ void job_definition::reset()
 	tag[0] = '\0';
 	pending_predecessors = 0;
 
+	wait_event = event_handle();
+	wait_job = job_handle();
+
 	context.reset();
 
 	// Should have been cleaned up by scheduler at this point ...

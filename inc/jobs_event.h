@@ -120,12 +120,18 @@ public:
 	result reset();
 
 	/** @todo */
+	bool is_signalled();
+
+	/** @todo */
 	bool operator==(const event_handle& rhs) const;
 
 	/** @todo */
 	bool operator!=(const event_handle& rhs) const;
 
 private:
+
+	/** @todo */
+	bool consume_signal();
 
 	/** Pointer to the owning scheduler of this handle. */
 	scheduler* m_scheduler = nullptr;

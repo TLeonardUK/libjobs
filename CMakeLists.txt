@@ -21,23 +21,24 @@ cmake_minimum_required(VERSION 3.8)
 
 project(libjobs C CXX)
 
+include(${CMAKE_SOURCE_DIR}/CMakeLists.Common.txt)
+
 # Build options.
 option(BUILD_DOC "Build documentation" ON)
+option(BUILD_EXAMPLES "Build examples" ON)
 
 # Version
-set(VERSION_MAJOR 1)
-set(VERSION_MINOR 0)
-set(VERSION_PATCH 0)
+set(VERSION_MAJOR 1 CACHE INTERNAL "")
+set(VERSION_MINOR 0 CACHE INTERNAL "")
+set(VERSION_PATCH 0 CACHE INTERNAL "")
 
-# Figure out architecture
-if("${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")
-	set(TARGET_ARCHITECTURE "x86")
-else()
-	set(TARGET_ARCHITECTURE "x64")
-endif()
-
-set(TARGET_SYSTEM "${CMAKE_SYSTEM_NAME}")
-string(TOLOWER ${TARGET_SYSTEM} TARGET_SYSTEM)
+# Add examples
+if (BUILD_EXAMPLES)
+	add_subdirectory(docs/examples/1_simple)
+	add_subdirectory(docs/examples/2_debug_output)
+	add_subdirectory(docs/examples/3_dependencies)
+	add_subdirectory(docs/examples/4_latent_actions)
+endif(BUILD_EXAMPLES)
 
 # Output folders
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
@@ -50,8 +51,7 @@ include_directories(
 )
 
 # Main library 
-#add_library(libjobs STATIC
-add_executable(libjobs
+add_library(${PROJECT_NAME} STATIC
 	"src/jobs.cpp"
 	"src/jobs_callback_scheduler.cpp"
 	"src/jobs_scheduler.cpp"
@@ -62,44 +62,36 @@ add_executable(libjobs
 	"src/jobs_event.cpp"
 	"src/jobs_utils.cpp"
 )
-add_definitions(-DUSE_PIX)
 
-# Enable fiber-safe optimizations on msvc build, otherwise it will cache thread_local vars
-# and make various things explode when we switch context's.
-if (MSVC)
-	set(CMAKE_C_FLAGS_RELWITHDEBINFO	"${CMAKE_C_FLAGS_RELWITHDEBINFO} /GT")
-	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO	"${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GT")
-	set(CMAKE_C_FLAGS_DEBUG				"${CMAKE_C_FLAGS_DEBUG} /GT")
-	set(CMAKE_CXX_FLAGS_DEBUG			"${CMAKE_CXX_FLAGS_DEBUG} /GT")
-endif(MSVC)
-
-target_link_libraries(libjobs ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
+target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
 
 # If in debug suffix _d to the output name.
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
-	set_target_properties(libjobs PROPERTIES OUTPUT_NAME "libjobs_d")
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}_d")
 else()
-	set_target_properties(libjobs PROPERTIES OUTPUT_NAME "libjobs")
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}")
 endif()
 
 # Generate documentation if available.
-if (NOT CMAKE_BUILD_TYPE MATCHES "Debug")
-    find_package(Doxygen)
-    if (DOXYGEN_FOUND)
+if (BUILD_DOC)
+	if (NOT CMAKE_BUILD_TYPE MATCHES "Debug")
+		find_package(Doxygen)
+		if (DOXYGEN_FOUND)
 
-        set(DOXYGEN_IN ${CMAKE_SOURCE_DIR}/Doxyfile.in)
-        set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+			set(DOXYGEN_IN ${CMAKE_SOURCE_DIR}/Doxyfile.in)
+			set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 
-        configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
-        message("Doxygen build started")
+			configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+			message("Doxygen build started")
 
-        add_custom_target(doc_doxygen ALL
-            COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-            COMMENT "Generating API documentation with Doxygen"
-            VERBATIM)
+			add_custom_target(doc_doxygen ALL
+				COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+				WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+				COMMENT "Generating API documentation with Doxygen"
+				VERBATIM)
 
-    else (DOXYGEN_FOUND)
-      message("Doxygen need to be installed to generate the doxygen documentation")
-    endif (DOXYGEN_FOUND)
-endif()
+		else (DOXYGEN_FOUND)
+		  message("Doxygen need to be installed to generate the doxygen documentation")
+		endif (DOXYGEN_FOUND)
+	endif()
+endif(BUILD_DOC)

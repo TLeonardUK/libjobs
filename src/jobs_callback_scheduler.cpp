@@ -78,14 +78,15 @@ result callback_scheduler::init(jobs::scheduler* scheduler, size_t max_callbacks
 			run_callbacks();
 
 			// No callbacks? Wait until we have one.
-			if (m_callback_pool.count() == 0)
+			uint64_t time_till_next_callback = get_ms_till_next_callback();
+			if (m_callback_pool.count() == 0 || time_till_next_callback == UINT64_MAX)
 			{
 				m_schedule_updated_cvar.wait(lock);
 			}
 			// Wait until next callback is due to run.
 			else
 			{
-				m_schedule_updated_cvar.wait_for(lock, std::chrono::milliseconds(get_ms_till_next_callback()));
+				m_schedule_updated_cvar.wait_for(lock, std::chrono::milliseconds(time_till_next_callback));
 			}
 		}
 	});
@@ -105,6 +106,9 @@ void callback_scheduler::run_callbacks()
 			{
 				def.callback();
 
+				size_t handle = i + (def.generation * m_callback_pool.capacity());
+				//printf("Complete handle=%llu index=%llu generation=%llu\n", handle, i, def.generation);
+
 				def.callback = nullptr;
 				def.active = false;
 
@@ -122,7 +126,7 @@ uint64_t callback_scheduler::get_ms_till_next_callback()
 	for (size_t i = 0; i < m_callback_pool.capacity(); i++)
 	{
 		callback_definition& def =* m_callback_pool.get_index(i);
-		if (def.active)
+		if (def.active && def.duration.duration != timeout::infinite.duration)
 		{
 			size_t remaining = max(0, def.duration.duration - def.stopwatch.get_elapsed_ms());
 			time_till_next = min(time_till_next, remaining);
@@ -132,7 +136,7 @@ uint64_t callback_scheduler::get_ms_till_next_callback()
 	return time_till_next;
 }
 
-result callback_scheduler::schedule(timeout duration, const callback_scheduler_function& callback)
+result callback_scheduler::schedule(timeout duration, size_t& handle, const callback_scheduler_function& callback)
 {
 	std::unique_lock<std::mutex> lock(m_schedule_updated_mutex);
 
@@ -149,8 +153,35 @@ result callback_scheduler::schedule(timeout duration, const callback_scheduler_f
 	def->stopwatch.start();
 	def->duration = duration;
 	def->callback = callback;
+	def->generation++;
 
 	m_schedule_updated_cvar.notify_all();
+
+	handle = index + (def->generation * m_callback_pool.capacity());
+	//printf("Alloc handle=%llu index=%llu generation=%llu\n", handle, index, def->generation);
+
+	return result::success;
+}
+
+result callback_scheduler::cancel(size_t handle)
+{
+	std::unique_lock<std::mutex> lock(m_schedule_updated_mutex);
+
+	size_t index = handle % m_callback_pool.capacity();
+	size_t generation = (handle / m_callback_pool.capacity());
+
+	//printf("Free handle=%llu index=%llu generation=%llu\n", handle, index, generation);
+
+	callback_definition* def = m_callback_pool.get_index(index);
+	if (def->generation != generation)
+	{
+		return result::already_complete;
+	}
+
+	def->callback = nullptr;
+	def->active = false;
+
+	m_callback_pool.free(index);
 
 	return result::success;
 }

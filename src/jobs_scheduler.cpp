@@ -757,7 +757,9 @@ result scheduler::requeue_job(size_t index)
 
 	internal::job_definition& def = get_job_definition(index);
 
-	if (def.status != internal::job_status::waiting)
+	if (def.status != internal::job_status::sleeping &&
+		def.status != internal::job_status::waiting_on_event &&
+		def.status != internal::job_status::waiting_on_job)
 	{
 		def.status = internal::job_status::pending;
 	}
@@ -799,13 +801,40 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 		bool return_job = false;
 		bool shift_job_to_back = false;
 
-		// If job has already started running (because its been picked up from another queue), 
-		// then remove it from the job list.
-		if (def.status == internal::job_status::waiting)
+		// If sleeping, just stick in the back of the job queue for now.
+		if (def.status == internal::job_status::sleeping)
 		{
 			// Can't do anything with a sleeping job, just shift it to the back of the queue and leave it for now.
 			shift_job_to_back = true;
 		}
+		// If waiting on an event, wake back up when event is complete, otherwise shift to back of job queue.
+		else if (def.status == internal::job_status::waiting_on_event)
+		{
+			if (def.wait_event.is_signalled())
+			{
+				remove_job = true;
+				return_job = true;
+			}
+			else
+			{
+				shift_job_to_back = true;				
+			}
+		}
+		// If explicitly waiting on an job, wake back up when job is complete, otherwise shift to back of job queue.
+		else if (def.status == internal::job_status::waiting_on_job)
+		{
+			if (def.wait_job.is_complete())
+			{
+				remove_job = true;
+				return_job = true;
+			}
+			else
+			{
+				shift_job_to_back = true;
+			}
+		}
+		// If job has already started running (because its been picked up from another queue), 
+		// then remove it from the job list.
 		else if (def.status != internal::job_status::pending)
 		{
 			remove_job = true;
@@ -1119,40 +1148,99 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
 	return result::success;
 }
 
-result scheduler::wait_for_job(job_handle job_handle, timeout wait_timeout)//, priority assist_on_tasks)
+result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//, priority assist_on_tasks)
 {
-	internal::stopwatch timer;
-	timer.start();
+	// @todo if we are already signaled and not auto-reset, just return.
+	internal::job_context* context = get_active_job_context();
+	internal::job_context* worker_context = get_worker_job_context();
 
-	while (!job_handle.is_complete())
+	// If we have a job context, adds this event to its dependencies and put it to sleep.
+	if (context != nullptr)
 	{
-		if (timer.get_elapsed_ms() > wait_timeout.duration)
+		assert(worker_context != nullptr);
+
+		volatile bool timeout_called = false;
+
+		// Put job to sleep.
+		context->job_def->status = internal::job_status::waiting_on_job;
+		context->job_def->wait_job = job_handle_in;
+
+		// Queue a wakeup.
+		size_t schedule_handle;
+		result res = m_callback_scheduler.schedule(wait_timeout, schedule_handle, [&]() {
+
+			// Do this atomatically to make sure we don't set it to pending after the scheduler 
+			// has already done that due to this event being signalled.
+			internal::job_status expected = internal::job_status::waiting_on_job;
+			if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
+			{
+				timeout_called = true;
+				notify_job_available();
+			}
+
+		});
+
+		// Failed to schedule a wakeup? Abort.
+		if (res != result::success)
+		{
+			context->job_def->status = internal::job_status::pending;
+			return res;
+		}
+
+		// Switch back to worker which will requeue fiber for execution later.			
+		switch_context(*worker_context);
+
+		// Cleanup
+		context->job_def->wait_job = job_handle();
+
+		// If we timed out, just escape here.
+		if (timeout_called)
 		{
 			return result::timeout;
 		}
 
-#if 0 // Not supported right now as helper thread must be converted to a fiber.
-		if (!execute_next_job(assist_on_tasks, false))
-#endif
-		{
-			std::unique_lock<std::mutex> lock(m_task_complete_mutex);
+		// Cancel callback and clear our job handle.
+		m_callback_scheduler.cancel(schedule_handle);
 
-			if (job_handle.is_complete())
+		return result::success;
+	}
+
+	// If we have no job context, we just have to do a blocking wait.
+	else
+	{
+		internal::stopwatch timer;
+		timer.start();
+
+		while (!job_handle_in.is_complete())
+		{
+			if (timer.get_elapsed_ms() > wait_timeout.duration)
 			{
-				break;
+				return result::timeout;
 			}
-			else
+
+	#if 0 // Not supported right now as helper thread must be converted to a fiber.
+			if (!execute_next_job(assist_on_tasks, false))
+	#endif
 			{
-				if (wait_timeout.is_infinite())
+				std::unique_lock<std::mutex> lock(m_task_complete_mutex);
+
+				if (job_handle_in.is_complete())
 				{
-					m_task_complete_cvar.wait(lock);
+					break;
 				}
 				else
 				{
-					size_t ms_remaining = wait_timeout.duration - timer.get_elapsed_ms();
-					if (ms_remaining > 0)
+					if (wait_timeout.is_infinite())
 					{
-						m_task_complete_cvar.wait_for(lock, std::chrono::milliseconds(ms_remaining));
+						m_task_complete_cvar.wait(lock);
+					}
+					else
+					{
+						size_t ms_remaining = wait_timeout.duration - timer.get_elapsed_ms();
+						if (ms_remaining > 0)
+						{
+							m_task_complete_cvar.wait_for(lock, std::chrono::milliseconds(ms_remaining));
+						}
 					}
 				}
 			}
@@ -1195,9 +1283,12 @@ result scheduler::sleep(timeout duration)
 
 		definition->context.scheduler->write_log(debug_log_verbosity::verbose, debug_log_group::job, "sleeping fiber=%zi:%zi", definition->context.fiber_pool_index, definition->context.fiber_index);
 
-		// Queue a wakeup.
-		definition->context.scheduler->m_callback_scheduler.schedule(duration, [&]() {
+		// Put job to sleep.
+		definition->status = internal::job_status::sleeping;
 
+		// Queue a wakeup.
+		size_t schedule_handle;
+		result res = definition->context.scheduler->m_callback_scheduler.schedule(duration, schedule_handle, [&]() {
 			definition->context.scheduler->write_log(debug_log_verbosity::verbose, debug_log_group::job, "wakeup fiber=%zi:%zi", definition->context.fiber_pool_index, definition->context.fiber_index);
 
 			timeout_called = true;
@@ -1206,8 +1297,12 @@ result scheduler::sleep(timeout duration)
 			definition->context.scheduler->notify_job_available();
 		});
 
-		// Put job to sleep.
-		definition->status = internal::job_status::waiting;
+		// Failed to schedule a wakeup? Abort.
+		if (res != result::success)
+		{
+			definition->status = internal::job_status::pending;
+			return res;
+		}
 
 		// Switch back to worker which will requeue fiber for execution later.
 		definition->context.scheduler->switch_context(m_worker_job_context);
@@ -1218,19 +1313,24 @@ result scheduler::sleep(timeout duration)
 		return result::timeout;
 	}
 
-	// No job context? While we could do a blocking sleep here, its more than likely not
-	// intentional by the developer, so assert instead.
+	// No job context? Blocking sleep then I guess?
 	else
 	{
-		assert(false);
+		// Not really sure why you would want this ... But better to support all situations I guess.
+		std::this_thread::sleep_for(std::chrono::milliseconds(duration.duration));
 
-		return result::not_in_job;
+		return result::timeout;
 	}
 }
 
 internal::job_context* scheduler::get_active_job_context()
 {
 	return m_worker_active_job_context;
+}
+
+internal::job_context* scheduler::get_worker_job_context()
+{
+	return &m_worker_job_context;
 }
 
 internal::job_definition* scheduler::get_active_job_definition()
@@ -1249,6 +1349,11 @@ void scheduler::notify_job_available()
 {
 	std::unique_lock<std::mutex> lock(m_task_available_mutex);
 	m_task_available_cvar.notify_all();
+}
+
+bool scheduler::get_logical_core_count()
+{
+	return std::thread::hardware_concurrency();
 }
 
 }; /* namespace jobs */

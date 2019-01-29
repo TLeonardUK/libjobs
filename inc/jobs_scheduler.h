@@ -263,13 +263,24 @@ public:
 	/** @todo */
 	static result sleep(timeout duration = timeout::infinite);
 
+	/** @todo */
+	static bool get_logical_core_count();
+
+	/**
+	 * \brief Gets the context of the worker management fiber running individual jobs.
+	 *
+	 * Generally this should not need to be called by user-code. Rather the wrappers that
+	 * interface with the context (profile_scope, job_handle, etc) should be preferred.
+	 *
+	 * \return Context of the current threads worker fiber, or nullptr if not called on a worker thread.
+	 */
+	static internal::job_context* get_worker_job_context();
+
 	/**
 	 * \brief Gets the context of the job currently running on calling thread.
 	 *
 	 * Generally this should not need to be called by user-code. Rather the wrappers that
 	 * interface with the context (profile_scope, job_handle, etc) should be preferred. 
-	 * Its public on the off chance that user-code wants finer-grain control over things 
-	 * like profiling scope.
 	 *
 	 * \return Context of the currently running job, or nullptr if no job is running on this thread.
 	 */
@@ -449,7 +460,7 @@ private:
 	profile_functions m_profile_functions;
 
     /** Maximum number of jobs this scheduler can handle concurrently. */
-    size_t m_max_jobs = 0;
+    size_t m_max_jobs = 100;
 
     /** Number of thread pools that have been added. */
     size_t m_thread_pool_count = 0;
@@ -512,25 +523,25 @@ private:
 	std::atomic<size_t> m_active_job_count = 0;
 
 	/** Maximum number of dependencies jobs can have. */
-	size_t m_max_dependencies = 1024;
+	size_t m_max_dependencies = 100;
 
 	/** Pool of dependencies to be allocated. */
 	internal::fixed_pool<internal::job_dependency> m_job_dependency_pool;
 
 	/** Maximum number of profile scopes we can have. */
-	size_t m_max_profile_scopes = 10000;
+	size_t m_max_profile_scopes = 1000;
 
 	/** Pool of profile scopes to be allocated. */
 	internal::fixed_pool<internal::profile_scope_definition> m_profile_scope_pool;
 
 	/** Maximum number of events we can have. */
-	size_t m_max_events = 1000;
+	size_t m_max_events = 100;
 
 	/** Pool of events that can be allocated. */
 	internal::fixed_pool<internal::event_definition> m_event_pool;
 
 	/** Maximum number of callbacks we can have. */
-	size_t m_max_callbacks = 1000;
+	size_t m_max_callbacks = 100;
 
 	/** Instance responsable for queueing and calling latent callbacks. */
 	internal::callback_scheduler m_callback_scheduler;
