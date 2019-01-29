@@ -40,6 +40,7 @@ if (BUILD_EXAMPLES)
 	add_subdirectory(docs/examples/4_latent_actions)
 	add_subdirectory(docs/examples/5_profile_events)
 	add_subdirectory(docs/examples/6_user_allocation)
+	add_subdirectory(docs/examples/7_game_loop)
 endif(BUILD_EXAMPLES)
 
 # Output folders
