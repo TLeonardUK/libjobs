@@ -56,6 +56,9 @@ scheduler::~scheduler()
     }
 
     m_destroying = true;
+
+    // Wake up all threads.
+    notify_job_available();
 }
 
 void* scheduler::default_alloc(size_t size)
@@ -1351,7 +1354,7 @@ void scheduler::notify_job_available()
     m_task_available_cvar.notify_all();
 }
 
-bool scheduler::get_logical_core_count()
+size_t scheduler::get_logical_core_count()
 {
     return std::thread::hardware_concurrency();
 }

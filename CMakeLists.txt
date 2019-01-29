@@ -38,6 +38,7 @@ if (BUILD_EXAMPLES)
 	add_subdirectory(docs/examples/2_debug_output)
 	add_subdirectory(docs/examples/3_dependencies)
 	add_subdirectory(docs/examples/4_latent_actions)
+	add_subdirectory(docs/examples/5_profile_events)
 endif(BUILD_EXAMPLES)
 
 # Output folders

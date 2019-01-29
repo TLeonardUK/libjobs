@@ -264,7 +264,7 @@ public:
     static result sleep(timeout duration = timeout::infinite);
 
     /** @todo */
-    static bool get_logical_core_count();
+    static size_t get_logical_core_count();
 
     /**
      * \brief Gets the context of the worker management fiber running individual jobs.

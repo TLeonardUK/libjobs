@@ -28,7 +28,11 @@
 #ifndef __JOBS_PLATFORM_H__
 #define __JOBS_PLATFORM_H__
 
-#if defined(_WIN32)
+#if defined(__ORBIS__) 
+#	define JOBS_PLATFORM_PS4 1
+#elif defined(XBOX) || defined(_XBOX_ONE) || defined(_DURANGO)
+#	define JOBS_PLATFORM_XBOX_ONE 1
+#elif defined(_WIN32)
 #	define JOBS_PLATFORM_WINDOWS 1
 #else
 #	error Unknown or unimplemented platform
