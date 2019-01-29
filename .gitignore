@@ -2,3 +2,4 @@ bin/
 lib/
 .vs/
 docs/html/
+enc_temp_folder/

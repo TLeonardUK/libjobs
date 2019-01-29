@@ -377,7 +377,7 @@ result scheduler::init()
 	for (size_t i = 0; i < m_fiber_pool_count; i++)
 	{
 		fiber_pool& pool = *m_fiber_pools_sorted_by_stack[i];
-		write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t\t[%i] workers=%i stack_size=%i", i, pool.fiber_count, pool.stack_size);
+		write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t\t[%i] fibers=%i stack_size=%i", i, pool.fiber_count, pool.stack_size);
 	}
 
     return result::success;
