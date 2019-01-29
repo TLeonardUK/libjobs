@@ -27,28 +27,28 @@ namespace jobs {
 namespace internal {
 
 thread::thread(const memory_functions& memory_functions)
-	: m_memory_functions(memory_functions)
+    : m_memory_functions(memory_functions)
 {
 }
 
 thread::~thread()
 {
-	join();
+    join();
 }
 
 result thread::init(const thread_entry_point& entry_point)
 {
-	std::thread new_thread(entry_point);
-	m_thread.swap(new_thread);
+    std::thread new_thread(entry_point);
+    m_thread.swap(new_thread);
 
-	assert(m_thread.joinable());
+    assert(m_thread.joinable());
 
-	return result::success;
+    return result::success;
 }
 
 void thread::join()
 {
-	m_thread.join();
+    m_thread.join();
 }
 
 }; /* namespace internal */

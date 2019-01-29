@@ -51,39 +51,39 @@ class thread
 {
 public:
 
-	/**
-	 * Constructor.
-	 *
-	 * \param memory_functions Scheduler defined memory functions used to 
-	 *						   override default memory allocation behaviour.
-	 */
+    /**
+     * Constructor.
+     *
+     * \param memory_functions Scheduler defined memory functions used to 
+     *						   override default memory allocation behaviour.
+     */
     thread(const memory_functions& memory_functions);
-	
-	/** Destructor. */
-	~thread();
-	
-	/**
-	 * \brief Initializes this thread of execution and begins running the thread.
-	 *
-	 * \param entry_point Function that should be run when the thread starts.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	result init(const thread_entry_point& entry_point);
+    
+    /** Destructor. */
+    ~thread();
+    
+    /**
+     * \brief Initializes this thread of execution and begins running the thread.
+     *
+     * \param entry_point Function that should be run when the thread starts.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result init(const thread_entry_point& entry_point);
 
-	/**
-	 * \brief Blocks until thread completes execution.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
+    /**
+     * \brief Blocks until thread completes execution.
+     *
+     * \return Value indicating the success of this function.
+     */
     void join();
 
 private:
 
-	/** Memory allocation functions provided by the scheduler. */
-	memory_functions m_memory_functions;
+    /** Memory allocation functions provided by the scheduler. */
+    memory_functions m_memory_functions;
 
-	/** Thread of execution we are encapsulating */
+    /** Thread of execution we are encapsulating */
     std::thread m_thread;
 
 };

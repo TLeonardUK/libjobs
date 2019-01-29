@@ -26,31 +26,31 @@ namespace internal {
 
 void stopwatch::start()
 {
-	m_start_time = std::chrono::high_resolution_clock::now();
-	m_has_end = false;
+    m_start_time = std::chrono::high_resolution_clock::now();
+    m_has_end = false;
 }
 
 void stopwatch::stop()
 {
-	m_end_time = std::chrono::high_resolution_clock::now();
-	m_has_end = true;
+    m_end_time = std::chrono::high_resolution_clock::now();
+    m_has_end = true;
 }
 
 uint64_t stopwatch::get_elapsed_ms()
 {
-	std::chrono::high_resolution_clock::time_point end_time;
-	if (m_has_end)
-	{
-		end_time = m_end_time;
-	}
-	else
-	{
-		end_time = std::chrono::high_resolution_clock::now();
-	}
+    std::chrono::high_resolution_clock::time_point end_time;
+    if (m_has_end)
+    {
+        end_time = m_end_time;
+    }
+    else
+    {
+        end_time = std::chrono::high_resolution_clock::now();
+    }
 
-	float elapsed = std::chrono::duration<float, std::chrono::milliseconds::period>(end_time - m_start_time).count();
+    float elapsed = std::chrono::duration<float, std::chrono::milliseconds::period>(end_time - m_start_time).count();
 
-	return (uint64_t)elapsed;
+    return (uint64_t)elapsed;
 }
 
 }; /* namespace internal */

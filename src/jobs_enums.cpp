@@ -26,18 +26,18 @@ namespace internal {
 
 const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count] =
 {
-	"error",
-	"warning",
-	"message",
-	"verbose",
+    "error",
+    "warning",
+    "message",
+    "verbose",
 };
 
 const char* debug_log_group_strings[(int)debug_log_group::count] =
 {
-	"worker",
-	"scheduler",
-	"memory",
-	"job",
+    "worker",
+    "scheduler",
+    "memory",
+    "job",
 };
 
 }; /* namespace internal */

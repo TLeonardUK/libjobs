@@ -31,7 +31,7 @@ fiber::fiber()
 }
 
 fiber::fiber(const memory_functions& memory_functions)
-	: m_memory_functions(memory_functions)
+    : m_memory_functions(memory_functions)
 {
 }
 
@@ -41,46 +41,46 @@ fiber::~fiber()
 
 result fiber::init(size_t stack_size, const fiber_entry_point& entry_point)
 {
-	m_entry_point = entry_point;
+    m_entry_point = entry_point;
 
 #ifdef JOBS_PLATFORM_WINDOWS
-	m_fiber_handle = CreateFiberEx(stack_size, stack_size, FIBER_FLAG_FLOAT_SWITCH, trampoline_entry_point, this);
-	if (m_fiber_handle == nullptr)
-	{
-		// Try and figure out some useful results if possible.
-		DWORD error = GetLastError();
-		if (error == ERROR_OUTOFMEMORY)
-		{
-			return result::out_of_memory;
-		}
+    m_fiber_handle = CreateFiberEx(stack_size, stack_size, FIBER_FLAG_FLOAT_SWITCH, trampoline_entry_point, this);
+    if (m_fiber_handle == nullptr)
+    {
+        // Try and figure out some useful results if possible.
+        DWORD error = GetLastError();
+        if (error == ERROR_OUTOFMEMORY)
+        {
+            return result::out_of_memory;
+        }
 
-		return result::platform_error;
-	}
+        return result::platform_error;
+    }
 #else
 #	error Unimplemented platform
 #endif
 
-	return result::success;
+    return result::success;
 }
 
 fiber fiber::convert_thread_to_fiber()
 {
-	fiber new_fiber;
-	new_fiber.m_entry_point = nullptr;
+    fiber new_fiber;
+    new_fiber.m_entry_point = nullptr;
 
 #ifdef JOBS_PLATFORM_WINDOWS
-	new_fiber.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);;
+    new_fiber.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);;
 #else
 #	error Unimplemented platform
 #endif
 
-	return new_fiber;
+    return new_fiber;
 }
 
 void fiber::convert_fiber_to_thread()
 {
 #ifdef JOBS_PLATFORM_WINDOWS
-	ConvertFiberToThread();
+    ConvertFiberToThread();
 #else
 #	error Unimplemented platform
 #endif
@@ -89,19 +89,19 @@ void fiber::convert_fiber_to_thread()
 result fiber::switch_to()
 {
 #ifdef JOBS_PLATFORM_WINDOWS
-	SwitchToFiber(m_fiber_handle);
+    SwitchToFiber(m_fiber_handle);
 #else
 #	error Unimplemented platform
 #endif
 
-	return result::success;
+    return result::success;
 }
 
 #ifdef JOBS_PLATFORM_WINDOWS
 VOID CALLBACK fiber::trampoline_entry_point(PVOID lpParameter)
 {
-	fiber* this_fiber = reinterpret_cast<fiber*>(GetFiberData());
-	this_fiber->m_entry_point();
+    fiber* this_fiber = reinterpret_cast<fiber*>(GetFiberData());
+    this_fiber->m_entry_point();
 }
 #endif
 

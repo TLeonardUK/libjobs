@@ -38,7 +38,7 @@ namespace jobs {
 
 struct memory_functions;
 class scheduler;
-	
+    
 namespace internal {
 
 /**
@@ -51,20 +51,20 @@ typedef std::function<void()> callback_scheduler_function;
  */
 struct callback_definition
 {
-	/** @todo */
-	bool active = false;
+    /** @todo */
+    bool active = false;
 
-	/** @todo */
-	size_t generation = 0;
+    /** @todo */
+    size_t generation = 0;
 
-	/** @todo */
-	stopwatch stopwatch;
+    /** @todo */
+    stopwatch stopwatch;
 
-	/** @todo */
-	timeout duration;
+    /** @todo */
+    timeout duration;
 
-	/** @todo */
-	callback_scheduler_function callback = nullptr;
+    /** @todo */
+    callback_scheduler_function callback = nullptr;
 };
 
 /**
@@ -74,73 +74,73 @@ class callback_scheduler
 {
 public:
 
-	/** Constructor. */
-	callback_scheduler();
+    /** Constructor. */
+    callback_scheduler();
 
-	/** Destructor. */
-	~callback_scheduler();
+    /** Destructor. */
+    ~callback_scheduler();
 
-	/**
-	 * \brief Initializes this scheduler.
-	 *
-	 * \param scheduler scheduler that owners this callback scheduler.
-	 * \param max_callbacks maximum number of callbacks that can queued concurrently.
-	 * \param memory_functions User defined functions for allocating and freeing memory.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	result init(jobs::scheduler* scheduler, size_t max_callbacks, const jobs::memory_functions& memory_functions);
+    /**
+     * \brief Initializes this scheduler.
+     *
+     * \param scheduler scheduler that owners this callback scheduler.
+     * \param max_callbacks maximum number of callbacks that can queued concurrently.
+     * \param memory_functions User defined functions for allocating and freeing memory.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result init(jobs::scheduler* scheduler, size_t max_callbacks, const jobs::memory_functions& memory_functions);
 
-	/**
-	 * \brief Schedules a new callback after the given timeout.
-	 *
-	 * \param duration how long before callback is invoked.
-	 * \param handle handle of scheduled callback, can be used to cancel it later.
-	 * \param callback callback that is run after timeout.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	result schedule(timeout duration, size_t& handle, const callback_scheduler_function& callback);
+    /**
+     * \brief Schedules a new callback after the given timeout.
+     *
+     * \param duration how long before callback is invoked.
+     * \param handle handle of scheduled callback, can be used to cancel it later.
+     * \param callback callback that is run after timeout.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result schedule(timeout duration, size_t& handle, const callback_scheduler_function& callback);
 
-	/**
-	 * \brief Cancels a previously scheduled callback.
-	 *
-	 * \param handle handle of callback to cancel.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	result cancel(size_t handle);
-
-private:
-
-	/** @todo */
-	void run_callbacks();
-
-	/** @todo */
-	uint64_t get_ms_till_next_callback();
+    /**
+     * \brief Cancels a previously scheduled callback.
+     *
+     * \param handle handle of callback to cancel.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result cancel(size_t handle);
 
 private:
 
-	/** Memory allocation functions provided by the scheduler. */
-	jobs::memory_functions m_memory_functions;
+    /** @todo */
+    void run_callbacks();
 
-	/** Schedule updated mutex */
-	std::mutex m_schedule_updated_mutex;
+    /** @todo */
+    uint64_t get_ms_till_next_callback();
 
-	/** Schedule updated condition variable */
-	std::condition_variable m_schedule_updated_cvar;
+private:
 
-	/** Thread used for running callbacks. */
-	thread* m_callback_thread = nullptr;
+    /** Memory allocation functions provided by the scheduler. */
+    jobs::memory_functions m_memory_functions;
 
-	/** Number of callbacks pending. */
-	fixed_pool<callback_definition> m_callback_pool;
+    /** Schedule updated mutex */
+    std::mutex m_schedule_updated_mutex;
 
-	/** Shutdown flag. */
-	bool m_shutting_down = false;
+    /** Schedule updated condition variable */
+    std::condition_variable m_schedule_updated_cvar;
 
-	/** Owner of this class */
-	jobs::scheduler* m_scheduler = nullptr;
+    /** Thread used for running callbacks. */
+    thread* m_callback_thread = nullptr;
+
+    /** Number of callbacks pending. */
+    fixed_pool<callback_definition> m_callback_pool;
+
+    /** Shutdown flag. */
+    bool m_shutting_down = false;
+
+    /** Owner of this class */
+    jobs::scheduler* m_scheduler = nullptr;
 
 };
 

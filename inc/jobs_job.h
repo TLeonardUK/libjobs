@@ -41,12 +41,12 @@ namespace jobs {
 class scheduler;
 
 /**
-	*  \brief Entry point for a jobs workload.
-	*/
+    *  \brief Entry point for a jobs workload.
+    */
 typedef std::function<void()> job_entry_point;
 
 namespace internal {
-	
+    
 class job_definition;
 class job_dependency;
 class job_context;
@@ -60,61 +60,61 @@ class job_context
 {
 protected:
 
-	friend class jobs::scheduler;
-	friend class jobs::event_handle;
+    friend class jobs::scheduler;
+    friend class jobs::event_handle;
 
-	/** @todo */
-	bool has_fiber = false;
+    /** @todo */
+    bool has_fiber = false;
 
-	/** @todo */
-	size_t fiber_index;
+    /** @todo */
+    size_t fiber_index;
 
-	/** @todo */
-	size_t fiber_pool_index;
+    /** @todo */
+    size_t fiber_pool_index;
 
-	/** @todo */
-	size_t queues_contained_in;
+    /** @todo */
+    size_t queues_contained_in;
 
-	/** @todo */
-	bool is_fiber_raw;
+    /** @todo */
+    bool is_fiber_raw;
 
-	/** @todo */
-	fiber raw_fiber;
+    /** @todo */
+    fiber raw_fiber;
 
-	/** @todo */
-	size_t profile_scope_depth;
+    /** @todo */
+    size_t profile_scope_depth;
 
-	/** @todo */
-	profile_scope_definition* profile_stack_head = nullptr;
+    /** @todo */
+    profile_scope_definition* profile_stack_head = nullptr;
 
-	/** @todo */
-	profile_scope_definition* profile_stack_tail = nullptr;
+    /** @todo */
+    profile_scope_definition* profile_stack_tail = nullptr;
 
-	/** @todo */
-	jobs::scheduler* scheduler = nullptr;
+    /** @todo */
+    jobs::scheduler* scheduler = nullptr;
 
-	/** @todo */
-	job_definition* job_def = nullptr;
+    /** @todo */
+    job_definition* job_def = nullptr;
 
 public:
 
-	/** @todo */
-	job_context();
+    /** @todo */
+    job_context();
 
-	/** @todo */
-	void reset();
+    /** @todo */
+    void reset();
 
-	/** @todo */
-	//result sleep(size_t milliseconds);
+    /** @todo */
+    //result sleep(size_t milliseconds);
 
-	/** @todo */
-	//result wait_for(job_event evt);
+    /** @todo */
+    //result wait_for(job_event evt);
 
-	/** @todo */
-	result enter_scope(profile_scope_type type, const char* tag, ...);
+    /** @todo */
+    result enter_scope(profile_scope_type type, const char* tag, ...);
 
-	/** @todo */
-	result leave_scope();
+    /** @todo */
+    result leave_scope();
 
 };
 
@@ -123,13 +123,13 @@ public:
  */
 enum class job_status
 {
-	initialized,		/**< Job is initialized and ready for dispatch */
-	pending,			/**< Job is pending execution */
-	running,			/**< Job is running on a worker */
-	sleeping,			/**< Job is sleeping. */
-	waiting_on_event,	/**< Job is waiting for an event to signal. */
-	waiting_on_job,		/**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
-	completed,			/**< Job has completed running */
+    initialized,		/**< Job is initialized and ready for dispatch */
+    pending,			/**< Job is pending execution */
+    running,			/**< Job is running on a worker */
+    sleeping,			/**< Job is sleeping. */
+    waiting_on_event,	/**< Job is waiting for an event to signal. */
+    waiting_on_job,		/**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
+    completed,			/**< Job has completed running */
 };
 
 }; /* nemspace internal */
@@ -144,92 +144,92 @@ class job_handle
 {
 protected:
 
-	friend class scheduler;
+    friend class scheduler;
 
-	/** @todo */
-	job_handle(scheduler* scheduler, size_t index);
+    /** @todo */
+    job_handle(scheduler* scheduler, size_t index);
 
-	/** @todo */
-	void increase_ref();
+    /** @todo */
+    void increase_ref();
 
-	/** @todo */
-	void decrease_ref();
+    /** @todo */
+    void decrease_ref();
 
 public:
 
-	/** @todo */
-	job_handle();
+    /** @todo */
+    job_handle();
 
-	/** @todo */
-	job_handle(const job_handle& other);
+    /** @todo */
+    job_handle(const job_handle& other);
 
-	/** @todo */
-	~job_handle();
+    /** @todo */
+    ~job_handle();
 
-	/** @todo */
-	job_handle& operator=(const job_handle& other);
+    /** @todo */
+    job_handle& operator=(const job_handle& other);
 
-	/** @todo */
-	result set_work(const job_entry_point& job_work);
+    /** @todo */
+    result set_work(const job_entry_point& job_work);
 
-	/** @todo */
-	result set_tag(const char* tag);
+    /** @todo */
+    result set_tag(const char* tag);
 
-	/** @todo */
-	result set_stack_size(size_t stack_size);
+    /** @todo */
+    result set_stack_size(size_t stack_size);
 
-	/** @todo */
-	result set_priority(priority job_priority);
+    /** @todo */
+    result set_priority(priority job_priority);
 
-	/** @todo */
-	result clear_dependencies();
+    /** @todo */
+    result clear_dependencies();
 
-	/** @todo */
-	result add_predecessor(job_handle other);
+    /** @todo */
+    result add_predecessor(job_handle other);
 
-	/** @todo */
-	//result add_predecessor(event* other);
+    /** @todo */
+    //result add_predecessor(event* other);
 
-	/** @todo */
-	result add_successor(job_handle other);
+    /** @todo */
+    result add_successor(job_handle other);
 
-	/** @todo */
-	//result add_successor(event* other);
+    /** @todo */
+    //result add_successor(event* other);
 
-	/** @todo */
-	bool is_pending();
+    /** @todo */
+    bool is_pending();
 
-	/** @todo */
-	bool is_running();
+    /** @todo */
+    bool is_running();
 
-	/** @todo */
-	bool is_complete();
+    /** @todo */
+    bool is_complete();
 
-	/** @todo */
-	bool is_mutable();
+    /** @todo */
+    bool is_mutable();
 
-	/** @todo */
-	bool is_valid();
+    /** @todo */
+    bool is_valid();
 
-	/** @todo */
-	result wait(timeout in_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
+    /** @todo */
+    result wait(timeout in_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
-	/** @todo */
-	result dispatch();
+    /** @todo */
+    result dispatch();
 
-	/** @todo */
-	bool operator==(const job_handle& rhs) const;
+    /** @todo */
+    bool operator==(const job_handle& rhs) const;
 
-	/** @todo */
-	bool operator!=(const job_handle& rhs) const;
+    /** @todo */
+    bool operator!=(const job_handle& rhs) const;
 
 private:
 
-	/** Pointer to the owning scheduler of this handle. */
-	scheduler* m_scheduler = nullptr;
+    /** Pointer to the owning scheduler of this handle. */
+    scheduler* m_scheduler = nullptr;
 
-	/** @todo */
-	size_t m_index = 0;
+    /** @todo */
+    size_t m_index = 0;
 
 };
 
@@ -243,56 +243,56 @@ class job_definition
 {
 public:
 
-	/** @todo */
-	job_definition();
+    /** @todo */
+    job_definition();
 
-	/** @todo */
-	void reset();
+    /** @todo */
+    void reset();
 
 public:	
 
-	/** @todo */
-	std::atomic<size_t> ref_count;
+    /** @todo */
+    std::atomic<size_t> ref_count;
 
-	/** @todo */
-	job_entry_point work;
+    /** @todo */
+    job_entry_point work;
 
-	/** @todo */
-	size_t stack_size;
+    /** @todo */
+    size_t stack_size;
 
-	/** @todo */
-	priority job_priority;
+    /** @todo */
+    priority job_priority;
 
-	/** @todo */
-	std::atomic<job_status> status;
+    /** @todo */
+    std::atomic<job_status> status;
 
-	/** @todo */
-	event_handle wait_event;
-	
-	/** @todo */
-	job_handle wait_job;
+    /** @todo */
+    event_handle wait_event;
+    
+    /** @todo */
+    job_handle wait_job;
 
-	// Note: dependencies are only safe to modify in two situations:
-	//			- when job is not running and is mutable
-	//			- when job is running and is being modified by the fiber executing it (when not queued).
+    // Note: dependencies are only safe to modify in two situations:
+    //			- when job is not running and is mutable
+    //			- when job is running and is being modified by the fiber executing it (when not queued).
 
-	/** @todo */
-	job_dependency* first_predecessor = nullptr;
+    /** @todo */
+    job_dependency* first_predecessor = nullptr;
 
-	/** @todo */
-	job_dependency* first_successor = nullptr;
+    /** @todo */
+    job_dependency* first_successor = nullptr;
 
-	/** @todo */
-	std::atomic<size_t> pending_predecessors;
+    /** @todo */
+    std::atomic<size_t> pending_predecessors;
 
-	/** @todo */
-	job_context context;
+    /** @todo */
+    job_context context;
 
-	/** @todo */
-	static const size_t max_tag_length = 64;
+    /** @todo */
+    static const size_t max_tag_length = 64;
 
-	/** @todo */
-	char tag[max_tag_length];
+    /** @todo */
+    char tag[max_tag_length];
 
 };
 
@@ -304,28 +304,28 @@ class job_dependency
 {
 public:
 
-	/** @todo */
-	job_dependency(size_t in_pool_index)
-		: pool_index(in_pool_index)
-	{
-	}
+    /** @todo */
+    job_dependency(size_t in_pool_index)
+        : pool_index(in_pool_index)
+    {
+    }
 
-	/** @todo */
-	void reset()
-	{
-		// pool_index should not be reset, it should be persistent.
-		job = job_handle();
-		next = nullptr;
-	}
+    /** @todo */
+    void reset()
+    {
+        // pool_index should not be reset, it should be persistent.
+        job = job_handle();
+        next = nullptr;
+    }
 
-	/** @todo */
-	size_t pool_index;
+    /** @todo */
+    size_t pool_index;
 
-	/** @todo */
-	job_handle job;
+    /** @todo */
+    job_handle job;
 
-	/** @todo */
-	job_dependency* next = nullptr;
+    /** @todo */
+    job_dependency* next = nullptr;
 
 };
 
@@ -337,20 +337,20 @@ class profile_scope_definition
 {
 public:
 
-	/** @todo */
-	profile_scope_type type;
+    /** @todo */
+    profile_scope_type type;
 
-	/** @todo */
-	static const size_t max_tag_length = 64;
+    /** @todo */
+    static const size_t max_tag_length = 64;
 
-	/** @todo */
-	char tag[max_tag_length];
+    /** @todo */
+    char tag[max_tag_length];
 
-	/** @todo */
-	profile_scope_definition* next;
+    /** @todo */
+    profile_scope_definition* next;
 
-	/** @todo */
-	profile_scope_definition* prev;
+    /** @todo */
+    profile_scope_definition* prev;
 
 };
 
@@ -363,15 +363,15 @@ public:
 class profile_scope
 {
 private:
-	internal::job_context* m_context = nullptr;
+    internal::job_context* m_context = nullptr;
 
 public:
 
-	/** @todo */
-	profile_scope(jobs::profile_scope_type type, const char* tag);
+    /** @todo */
+    profile_scope(jobs::profile_scope_type type, const char* tag);
 
-	/** @todo */
-	~profile_scope();
+    /** @todo */
+    ~profile_scope();
 };
 
 }; /* namespace jobs */

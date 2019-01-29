@@ -34,9 +34,9 @@
 #include <atomic>
 
 namespace jobs {
-	
+    
 namespace internal {
-	
+    
 /**
  * Encapsulates all the settings required to manage an event. This is used 
  * for internal storage, and shouldn't ever need to be touched by outside code.
@@ -45,22 +45,22 @@ class event_definition
 {
 public:
 
-	/** @todo */
-	event_definition();
+    /** @todo */
+    event_definition();
 
-	/** @todo */
-	void reset();
+    /** @todo */
+    void reset();
 
 public:	
 
-	/** @todo */
-	std::atomic<size_t> ref_count;
+    /** @todo */
+    std::atomic<size_t> ref_count;
 
-	/** @todo */
-	std::atomic<bool> signalled;
+    /** @todo */
+    std::atomic<bool> signalled;
 
-	/** @todo */
-	bool auto_reset;
+    /** @todo */
+    bool auto_reset;
 
 };
 
@@ -85,59 +85,59 @@ class event_handle
 {
 protected:
 
-	friend class scheduler;
+    friend class scheduler;
 
-	/** @todo */
-	event_handle(scheduler* scheduler, size_t index);
+    /** @todo */
+    event_handle(scheduler* scheduler, size_t index);
 
-	/** @todo */
-	void increase_ref();
+    /** @todo */
+    void increase_ref();
 
-	/** @todo */
-	void decrease_ref();
+    /** @todo */
+    void decrease_ref();
 
 public:
 
-	/** @todo */
-	event_handle();
+    /** @todo */
+    event_handle();
 
-	/** @todo */
-	event_handle(const event_handle& other);
+    /** @todo */
+    event_handle(const event_handle& other);
 
-	/** @todo */
-	~event_handle();
+    /** @todo */
+    ~event_handle();
 
-	/** @todo */
-	event_handle& operator=(const event_handle& other);
+    /** @todo */
+    event_handle& operator=(const event_handle& other);
 
-	/** @todo */
-	result wait(timeout in_timeout = timeout::infinite);
+    /** @todo */
+    result wait(timeout in_timeout = timeout::infinite);
 
-	/** @todo */
-	result signal();
+    /** @todo */
+    result signal();
 
-	/** @todo */
-	result reset();
+    /** @todo */
+    result reset();
 
-	/** @todo */
-	bool is_signalled();
+    /** @todo */
+    bool is_signalled();
 
-	/** @todo */
-	bool operator==(const event_handle& rhs) const;
+    /** @todo */
+    bool operator==(const event_handle& rhs) const;
 
-	/** @todo */
-	bool operator!=(const event_handle& rhs) const;
+    /** @todo */
+    bool operator!=(const event_handle& rhs) const;
 
 private:
 
-	/** @todo */
-	bool consume_signal();
+    /** @todo */
+    bool consume_signal();
 
-	/** Pointer to the owning scheduler of this handle. */
-	scheduler* m_scheduler = nullptr;
+    /** Pointer to the owning scheduler of this handle. */
+    scheduler* m_scheduler = nullptr;
 
-	/** @todo */
-	size_t m_index = 0;
+    /** @todo */
+    size_t m_index = 0;
 
 };
 

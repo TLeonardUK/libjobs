@@ -41,25 +41,25 @@ struct stopwatch
 {
 public:
 
-	/** @todo */
-	void start();
+    /** @todo */
+    void start();
 
-	/** @todo */
-	void stop();
+    /** @todo */
+    void stop();
 
-	/** @todo */
-	uint64_t get_elapsed_ms();
+    /** @todo */
+    uint64_t get_elapsed_ms();
 
 private:
 
-	/** @todo */
-	std::chrono::high_resolution_clock::time_point m_start_time;
+    /** @todo */
+    std::chrono::high_resolution_clock::time_point m_start_time;
 
-	/** @todo */
-	std::chrono::high_resolution_clock::time_point m_end_time;
+    /** @todo */
+    std::chrono::high_resolution_clock::time_point m_end_time;
 
-	/** @todo */
-	bool m_has_end = false;
+    /** @todo */
+    bool m_has_end = false;
 
 };
 
@@ -72,39 +72,39 @@ struct timeout
 {
 public:
 
-	/** Duration of this timeout in milliseconds. */
-	uint64_t duration;
+    /** Duration of this timeout in milliseconds. */
+    uint64_t duration;
 
-	/**
-	 *  \brief Default constructor
-	 */
-	timeout()
-		: duration(0)
-	{
-	}
+    /**
+     *  \brief Default constructor
+     */
+    timeout()
+        : duration(0)
+    {
+    }
 
-	/**
-	 *  \brief Constructor
-	 *
-	 *  \param inDuration Duration in milliseconds of this timeout.
-	 */
-	timeout(uint64_t inDuration)
-		: duration(inDuration)
-	{
-	}
+    /**
+     *  \brief Constructor
+     *
+     *  \param inDuration Duration in milliseconds of this timeout.
+     */
+    timeout(uint64_t inDuration)
+        : duration(inDuration)
+    {
+    }
 
-	/**
-	 *  \brief Returns true if this timeout is infinite.
-	 *
-	 *  \return true if an infinite timeout.
-	 */
-	bool is_infinite()
-	{
-		return duration == infinite.duration;
-	}
+    /**
+     *  \brief Returns true if this timeout is infinite.
+     *
+     *  \return true if an infinite timeout.
+     */
+    bool is_infinite()
+    {
+        return duration == infinite.duration;
+    }
 
-	/** Represents an infinite, non-ending timeout. */
-	static const timeout infinite;
+    /** Represents an infinite, non-ending timeout. */
+    static const timeout infinite;
 
 };
 

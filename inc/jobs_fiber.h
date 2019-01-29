@@ -49,75 +49,75 @@ class fiber
 {
 public:
 
-	/**
-	 * Default constructor.
-	 */
-	fiber();
+    /**
+     * Default constructor.
+     */
+    fiber();
 
-	/**
-	 * Constructor.
-	 *
-	 * \param memory_function Scheduler defined memory functions used to 
-	 *						  override default memory allocation behaviour.
-	 */
-	fiber(const memory_functions& memory_functions);
+    /**
+     * Constructor.
+     *
+     * \param memory_function Scheduler defined memory functions used to 
+     *						  override default memory allocation behaviour.
+     */
+    fiber(const memory_functions& memory_functions);
 
-	/** Destructor. */
-	~fiber();
+    /** Destructor. */
+    ~fiber();
 
-	/**
-	 * \brief Initializes this fiber.
-	 *
-	 * \param stack_size Size of the stack that should be allocated for this fibers execution context.
-	 * \param entry_point Function that this fiber should start running when executed.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	result init(size_t stack_size, const fiber_entry_point& entry_point);
+    /**
+     * \brief Initializes this fiber.
+     *
+     * \param stack_size Size of the stack that should be allocated for this fibers execution context.
+     * \param entry_point Function that this fiber should start running when executed.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result init(size_t stack_size, const fiber_entry_point& entry_point);
 
-	/**
-	 * \brief Switches this threads execution context to this fiber.
-	 *
-	 * \return Value indicating the success of this function.
-	 */
-	result switch_to();
+    /**
+     * \brief Switches this threads execution context to this fiber.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result switch_to();
 
-	/**
-	 * \brief Converts the current thread to a fiber.
-	 * 
-	 *  On some operating systems (notably windows) fibers can only be run by other fibers.
-	 *  so any worker threads dealing with fibers need to first be converted. Which is done using
-	 *  this function.
-	 */
-	static fiber convert_thread_to_fiber();
+    /**
+     * \brief Converts the current thread to a fiber.
+     * 
+     *  On some operating systems (notably windows) fibers can only be run by other fibers.
+     *  so any worker threads dealing with fibers need to first be converted. Which is done using
+     *  this function.
+     */
+    static fiber convert_thread_to_fiber();
 
 
-	/**
-	 * \brief Converts the current fiber to a thread.
-	 *
-	 *  This performs the inverse of convert_thread_to_fiber and should be invoked when the thread
-	 *  has finished performing any fiber operations.
-	 */
-	static void convert_fiber_to_thread();
+    /**
+     * \brief Converts the current fiber to a thread.
+     *
+     *  This performs the inverse of convert_thread_to_fiber and should be invoked when the thread
+     *  has finished performing any fiber operations.
+     */
+    static void convert_fiber_to_thread();
 
 private:
 
 #ifdef JOBS_PLATFORM_WINDOWS
-	/** Trampoline function used to call the user-defined entry point. */
-	static VOID CALLBACK trampoline_entry_point(PVOID lpParameter);
+    /** Trampoline function used to call the user-defined entry point. */
+    static VOID CALLBACK trampoline_entry_point(PVOID lpParameter);
 #endif
 
 private:
 
-	/** Memory allocation functions provided by the scheduler. */
-	memory_functions m_memory_functions;
+    /** Memory allocation functions provided by the scheduler. */
+    memory_functions m_memory_functions;
 
-	/** User defined entry point to execute when the fiber is run. */
-	fiber_entry_point m_entry_point;
+    /** User defined entry point to execute when the fiber is run. */
+    fiber_entry_point m_entry_point;
 
 #ifdef JOBS_PLATFORM_WINDOWS
-	/** Handle of platform defined fiber. */
-	LPVOID m_fiber_handle;
+    /** Handle of platform defined fiber. */
+    LPVOID m_fiber_handle;
 #endif
 
 };

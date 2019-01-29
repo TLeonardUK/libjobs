@@ -61,8 +61,8 @@ typedef std::function<void(void* ptr)> memory_free_function;
  */
 struct memory_functions
 {
-	memory_alloc_function user_alloc = nullptr;
-	memory_free_function user_free = nullptr;
+    memory_alloc_function user_alloc = nullptr;
+    memory_free_function user_free = nullptr;
 };
 
 namespace internal {
@@ -79,161 +79,161 @@ struct fixed_pool
 {
 public:
 
-	/**
-	 *  \brief User-defined function used to initialize elements in a fixed_pool.
-	 *
-	 *  \param ptr Pointer to element to initialize.
-	 *  \param index Index of element inside pool.
-	 *
-	 *  \return Result of initialization, initialization will abort on first failed element.
-	 */
-	typedef std::function<result(data_type* ptr, size_t index)> init_function;
+    /**
+     *  \brief User-defined function used to initialize elements in a fixed_pool.
+     *
+     *  \param ptr Pointer to element to initialize.
+     *  \param index Index of element inside pool.
+     *
+     *  \return Result of initialization, initialization will abort on first failed element.
+     */
+    typedef std::function<result(data_type* ptr, size_t index)> init_function;
 
 public:
 
-	/**
-	 * Constructor.
-	 *
-	 * \param memory_function User defined memory allocation overrides.
-	 */
-	fixed_pool()
-	{
-	}
+    /**
+     * Constructor.
+     *
+     * \param memory_function User defined memory allocation overrides.
+     */
+    fixed_pool()
+    {
+    }
 
-	/** Destructor. */
-	~fixed_pool()
-	{
-		if (m_free_object_indices != nullptr)
-		{
-			m_memory_functions.user_free(m_free_object_indices);
-			m_free_object_indices = nullptr;
-		}
-		if (m_objects != nullptr)
-		{
-			for (int i = 0; i < m_capacity; i++)
-			{
-				m_objects[i].~data_type();
-			}
-			m_memory_functions.user_free(m_objects);
-			m_objects = nullptr;
-		}
-	}
+    /** Destructor. */
+    ~fixed_pool()
+    {
+        if (m_free_object_indices != nullptr)
+        {
+            m_memory_functions.user_free(m_free_object_indices);
+            m_free_object_indices = nullptr;
+        }
+        if (m_objects != nullptr)
+        {
+            for (int i = 0; i < m_capacity; i++)
+            {
+                m_objects[i].~data_type();
+            }
+            m_memory_functions.user_free(m_objects);
+            m_objects = nullptr;
+        }
+    }
 
-	/** @todo */
-	result init(const memory_functions& memory_functions, size_t capacity, const init_function& init_function)
-	{
-		m_memory_functions = memory_functions;
-		m_capacity = capacity;
+    /** @todo */
+    result init(const memory_functions& memory_functions, size_t capacity, const init_function& init_function)
+    {
+        m_memory_functions = memory_functions;
+        m_capacity = capacity;
 
-		// Alloc the object list.
-		m_objects = static_cast<data_type*>(m_memory_functions.user_alloc(sizeof(data_type) * capacity));
-		if (m_objects == nullptr)
-		{
-			return result::out_of_memory;
-		}
+        // Alloc the object list.
+        m_objects = static_cast<data_type*>(m_memory_functions.user_alloc(sizeof(data_type) * capacity));
+        if (m_objects == nullptr)
+        {
+            return result::out_of_memory;
+        }
 
-		// Initialize allocated objects.
-		for (int i = 0; i < capacity; i++)
-		{
-			result res = init_function(m_objects + i, i);
-			if (res != result::success)
-			{
-				return res;
-			}
-		}
+        // Initialize allocated objects.
+        for (int i = 0; i < capacity; i++)
+        {
+            result res = init_function(m_objects + i, i);
+            if (res != result::success)
+            {
+                return res;
+            }
+        }
 
-		// Alloc and fill the free object list.
-		m_free_object_count = m_capacity;
-		m_free_object_indices = static_cast<size_t*>(m_memory_functions.user_alloc(sizeof(size_t) * capacity));
-		for (int i = 0; i < capacity; i++)
-		{
-			m_free_object_indices[i] = i;
-		}
+        // Alloc and fill the free object list.
+        m_free_object_count = m_capacity;
+        m_free_object_indices = static_cast<size_t*>(m_memory_functions.user_alloc(sizeof(size_t) * capacity));
+        for (int i = 0; i < capacity; i++)
+        {
+            m_free_object_indices[i] = i;
+        }
 
-		return result::success;
-	}
+        return result::success;
+    }
 
-	/** @todo */
-	result alloc(size_t& output)
-	{
-		// @todo: make this atomic
-		std::lock_guard<std::mutex> lock(m_access_mutex);
+    /** @todo */
+    result alloc(size_t& output)
+    {
+        // @todo: make this atomic
+        std::lock_guard<std::mutex> lock(m_access_mutex);
 
-		if (m_free_object_count == 0)
-		{
-			return result::out_of_objects;
-		}
+        if (m_free_object_count == 0)
+        {
+            return result::out_of_objects;
+        }
 
-		size_t free_index = --m_free_object_count;
+        size_t free_index = --m_free_object_count;
 
-		output = m_free_object_indices[free_index];
+        output = m_free_object_indices[free_index];
 
-		return result::success;
-	}
+        return result::success;
+    }
 
-	/** @todo */
-	result free(size_t index)
-	{
-		// @todo: make this atomic
-		std::lock_guard<std::mutex> lock(m_access_mutex);
+    /** @todo */
+    result free(size_t index)
+    {
+        // @todo: make this atomic
+        std::lock_guard<std::mutex> lock(m_access_mutex);
 
-		m_free_object_indices[m_free_object_count] = index;
-		m_free_object_count++;
+        m_free_object_indices[m_free_object_count] = index;
+        m_free_object_count++;
 
-		return result::success;
-	}
+        return result::success;
+    }
 
-	/** @todo */
-	result free(data_type* object)
-	{
-		// @todo: make this atomic
-		std::lock_guard<std::mutex> lock(m_access_mutex);
+    /** @todo */
+    result free(data_type* object)
+    {
+        // @todo: make this atomic
+        std::lock_guard<std::mutex> lock(m_access_mutex);
 
-		size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
+        size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
 
-		m_free_object_indices[m_free_object_count] = index;
-		m_free_object_count++;
+        m_free_object_indices[m_free_object_count] = index;
+        m_free_object_count++;
 
-		return result::success;
-	}
+        return result::success;
+    }
 
-	/** @todo */
-	data_type* get_index(size_t index)
-	{
-		return &m_objects[index];
-	}
+    /** @todo */
+    data_type* get_index(size_t index)
+    {
+        return &m_objects[index];
+    }
 
-	/** @todo */
-	size_t count()
-	{
-		return m_capacity - m_free_object_count;
-	}
+    /** @todo */
+    size_t count()
+    {
+        return m_capacity - m_free_object_count;
+    }
 
-	/** @todo */
-	size_t capacity()
-	{
-		return m_capacity;
-	}
+    /** @todo */
+    size_t capacity()
+    {
+        return m_capacity;
+    }
 
 private:
 
-	/** @todo */
-	std::mutex m_access_mutex;
+    /** @todo */
+    std::mutex m_access_mutex;
 
-	/** @todo */
-	memory_functions m_memory_functions;
+    /** @todo */
+    memory_functions m_memory_functions;
 
-	/** @todo */
-	data_type* m_objects = nullptr;
+    /** @todo */
+    data_type* m_objects = nullptr;
 
-	/** @todo */
-	size_t m_capacity = 0;
+    /** @todo */
+    size_t m_capacity = 0;
 
-	/** @todo */
-	size_t* m_free_object_indices = nullptr;
+    /** @todo */
+    size_t* m_free_object_indices = nullptr;
 
-	/** @todo */
-	size_t m_free_object_count = 0;
+    /** @todo */
+    size_t m_free_object_count = 0;
 
 };
 
