@@ -58,6 +58,7 @@ enum class result
     timeout,                /**< Operation timed out before completion. */
     not_in_job,             /**< Attempt to execution a function that can only be run under a jobs context. */
     already_complete,       /**< Attempt was made to stop or cancel an operation which has already completed. */
+    empty,                  /**< Operation failed as container was empty. */
 };
 
 /**

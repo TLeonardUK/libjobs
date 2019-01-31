@@ -30,6 +30,9 @@
 
 #include <stdint.h>
 #include <chrono>
+#include <atomic>
+
+#include "jobs_memory.h"
 
 namespace jobs {
 namespace internal {
@@ -63,6 +66,134 @@ private:
 
     /** @todo */
     bool m_has_end = false;
+
+};
+
+/** @todo */
+template <typename data_type>
+struct atomic_queue
+{
+public:
+
+    /** @todo */
+    ~atomic_queue()
+    {
+        if (m_buffer != nullptr)
+        {
+            m_memory_functions.user_free(m_buffer);
+            m_buffer = nullptr;
+        }
+    }
+
+    /** @todo */
+    result init(const memory_functions& memory_functions, size_t capacity)
+    {
+        // implemented as an atomic circular buffer.
+        m_buffer = (data_type*)memory_functions.user_alloc(sizeof(data_type) * capacity);
+        m_memory_functions = memory_functions;
+
+        m_head = 0;
+        m_tail = 0;
+        m_uncomitted_head = 0;
+        m_uncomitted_tail = 0;
+
+        m_capacity = capacity;
+
+        return result::success;
+    }
+
+    /** @todo */
+    result pop(data_type& result)
+    {
+        while (true)
+        {
+            size_t old_tail = m_tail;
+            size_t new_tail = old_tail + 1;
+
+            size_t diff = (m_head - new_tail);
+            if (diff < 0 || diff > m_capacity)
+            {
+                return result::empty;
+            }
+
+            if (m_uncomitted_tail.compare_exchange_strong(old_tail, new_tail))
+            {
+                result = m_buffer[old_tail % m_capacity];
+                m_tail = m_uncomitted_tail;
+                break;
+            }
+            else
+            {
+                _mm_pause();
+            }
+        }
+
+        return result::success;
+    }
+
+    /** @todo */
+    result push(data_type value)
+    {
+        while (true)
+        {
+            size_t old_head = m_head;
+            size_t new_head = old_head + 1;
+
+            size_t diff = (new_head - m_tail);
+            if (diff < 0 || diff > m_capacity)
+            {
+                continue;
+            }
+
+            if (m_uncomitted_head.compare_exchange_strong(old_head, new_head))
+            {
+                m_buffer[old_head % m_capacity] = value;
+                m_head = m_uncomitted_head;
+                break;
+            }
+            else
+            {
+                _mm_pause();
+            }
+        }
+
+        return result::success;
+    }
+
+    /** @todo */
+    size_t count()
+    {
+        return (m_head - m_tail);
+    }
+
+    /** @todo */
+    bool is_empty()
+    {
+        return (m_head == m_tail);
+    }
+
+private:
+
+    /** @todo */
+    data_type* m_buffer = nullptr;
+
+    /** @todo */
+    memory_functions m_memory_functions;
+
+    /** @todo */
+    size_t m_head;
+
+    /** @todo */
+    size_t m_tail;
+
+    /** @todo */
+    std::atomic<size_t> m_uncomitted_head;
+
+    /** @todo */
+    std::atomic<size_t> m_uncomitted_tail;
+
+    /** @todo */
+    size_t m_capacity;
 
 };
 

@@ -48,15 +48,6 @@ scheduler::scheduler()
 
 scheduler::~scheduler()
 {
-    // Allocate task queues.
-    for (size_t i = 0; i < (int)priority::count; i++)
-    {
-        if (m_pending_job_queues[i].pending_job_indicies != nullptr)
-        {
-            m_memory_functions.user_free(m_pending_job_queues[i].pending_job_indicies);
-        }
-    }
-
     m_destroying = true;
 
     // Wake up all threads.
@@ -366,8 +357,11 @@ result scheduler::init()
     // Allocate task queues.
     for (size_t i = 0; i < (int)priority::count; i++)
     {
-        m_pending_job_queues[i].pending_job_count = 0;
-        m_pending_job_queues[i].pending_job_indicies = (size_t*)m_memory_functions.user_alloc(sizeof(size_t) * m_max_jobs);
+        result = m_pending_job_queues[i].pending_job_indicies.init(m_memory_functions, m_max_jobs);
+        if (result != result::success)
+        {
+            return result;
+        }
     }
 
     // Allocate fibers.
@@ -836,8 +830,6 @@ result scheduler::dispatch_job(size_t index)
 {
     profile_scope scope_(profile_scope_type::user_defined, "dispatch_job");
 
-    std::unique_lock<std::mutex> lock(m_task_available_mutex);
-
     internal::job_definition& def = get_job_definition(index);
 
     if (def.status != internal::job_status::initialized &&
@@ -864,19 +856,15 @@ result scheduler::dispatch_job(size_t index)
 
         if (((size_t)def.job_priority & mask) != 0)
         {
-            // We should only be able to allocate max_jobs jobs, and each one can only be dispatched 
-            // at most once at a time. So we should never run out of space in any queues ...
-            assert(m_pending_job_queues[i].pending_job_count < m_max_jobs);
-
-            size_t write_index = m_pending_job_queues[i].pending_job_count++;
-            m_pending_job_queues[i].pending_job_indicies[write_index] = index;
-
             def.context.queues_contained_in |= mask;
+
+            result res = m_pending_job_queues[i].pending_job_indicies.push(index);
+            assert(res == result::success);
         }
     }
 
     // Wake all workers up so they can pickup task.
-    m_task_available_cvar.notify_all();
+    notify_job_available();
 
     return result::success;
 }
@@ -884,8 +872,6 @@ result scheduler::dispatch_job(size_t index)
 result scheduler::requeue_job(size_t index)
 {
     profile_scope scope(profile_scope_type::user_defined, "requeue_job");
-
-    std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
     internal::job_definition& def = get_job_definition(index);
 
@@ -904,14 +890,10 @@ result scheduler::requeue_job(size_t index)
 
         if (((size_t)def.job_priority & mask) != 0 && (def.context.queues_contained_in & mask) == 0)
         {
-            // We should only be able to allocate max_jobs jobs, and each one can only be dispatched 
-            // at most once at a time. So we should never run out of space in any queues ...
-            assert(m_pending_job_queues[i].pending_job_count < m_max_jobs);
-
-            size_t write_index = m_pending_job_queues[i].pending_job_count++;
-            m_pending_job_queues[i].pending_job_indicies[write_index] = index;
-
             def.context.queues_contained_in |= mask;
+
+            result res = m_pending_job_queues[i].pending_job_indicies.push(index);
+            assert(res == result::success);
         }
     }
 
@@ -922,35 +904,43 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 {
     bool shifted_last_iteration = false;
 
-    // @todo switch for a linked list so we can truely remove/add jobs quickly. How to deal with multiple queues?
-    // @todo keep track of how many dependencies left to satisify, count down and don't check everything until 0? Rather than iteration?
+    profile_scope scope(profile_scope_type::user_defined, "get_next_job_from_queue");
 
-    for (size_t i = 0; i < queue.pending_job_count; /* No increment */)
+    // @todo: this is a failure, we could end up not checking jobs if they are enqueued during? 
+    //        We should probably seperate this into a waiting queue for those waiting on dependencies 
+    //        and the pending_job_indicies queue which is always available.
+    for (size_t i = 0; ; i++)
     {
-        size_t job_index = queue.pending_job_indicies[i];
+        size_t count = queue.pending_job_indicies.count();
+        if (i >= count)
+        {
+            break;
+        }
+
+        size_t job_index;
+
+        result res = queue.pending_job_indicies.pop(job_index);
+        if (res == result::empty)
+        {
+            break;
+        }
+
         internal::job_definition& def = get_job_definition(job_index);
 
-        bool remove_job = false;
         bool return_job = false;
-        bool shift_job_to_back = false;
+        bool requeue_job = true;
 
         // If sleeping, just stick in the back of the job queue for now.
         if (def.status == internal::job_status::sleeping)
         {
             // Can't do anything with a sleeping job, just shift it to the back of the queue and leave it for now.
-            shift_job_to_back = true;
         }
         // If waiting on an counter value, wake back up when value is seen.
         else if (def.status == internal::job_status::waiting_on_counter)
         {
             if (def.wait_counter_signal)
             {
-                remove_job = true;
                 return_job = true;
-            }
-            else
-            {
-                shift_job_to_back = true;
             }
         }
         // If waiting on an event, wake back up when event is complete, otherwise shift to back of job queue.
@@ -958,12 +948,7 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
         {
             if (def.wait_event.is_signalled())
             {
-                remove_job = true;
                 return_job = true;
-            }
-            else
-            {
-                shift_job_to_back = true;				
             }
         }
         // If explicitly waiting on an job, wake back up when job is complete, otherwise shift to back of job queue.
@@ -971,19 +956,14 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
         {
             if (def.wait_job.is_complete())
             {
-                remove_job = true;
                 return_job = true;
-            }
-            else
-            {
-                shift_job_to_back = true;
             }
         }
         // If job has already started running (because its been picked up from another queue), 
         // then remove it from the job list.
         else if (def.status != internal::job_status::pending)
         {
-            remove_job = true;
+            requeue_job = false;
         }
         else
         {
@@ -991,52 +971,21 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
             if (dependencies_satisfied)
             {
-                remove_job = true;
                 return_job = true;
-            }
-            else
-            {
-                shift_job_to_back = true;
             }
         }
 
         bool did_shift_last_iteration = shifted_last_iteration;
         shifted_last_iteration = false;
 
-        if (remove_job)
+        if (!requeue_job)
         {
-            //write_log(debug_log_verbosity::message, debug_log_group::worker, "Removing %zi from queue %i", job_index, queue_mask);
-
-            queue.pending_job_indicies[i] = queue.pending_job_indicies[queue.pending_job_count - 1];
-            queue.pending_job_count--;
-
-            // Remove marker saying we are in this queue.
             def.context.queues_contained_in &= ~queue_mask;
-
-            // Next iteration we stay on the same index to check the new job we just placed in it.
-        }
-        else if (shift_job_to_back)
-        {
-            //write_log(debug_log_verbosity::message, debug_log_group::worker, "Shifting %zi in queue %i", job_index, queue_mask);
-
-            // If the dependencies for this job has failed, shift it to the back of the queue so we don't
-            // check it uneccessarily in future.
-            queue.pending_job_indicies[i] = queue.pending_job_indicies[queue.pending_job_count - 1];
-            queue.pending_job_indicies[queue.pending_job_count - 1] = job_index;
-
-            // Next iteration we stay on the same index to check the new job we just placed in it.
-            // Except if last iteration was a shift as well, otherwise we will just keep shifting.
-            if (did_shift_last_iteration)
-            {
-                i++;
-            }
-
-            shifted_last_iteration = true;
         }
         else
         {
-            // Next iteration should move to next job.
-            i++;
+            res = queue.pending_job_indicies.push(job_index);
+            assert(ret == result::success);
         }
 
         if (return_job)
@@ -1058,20 +1007,22 @@ bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_bl
 {
     profile_scope scope(profile_scope_type::user_defined, "get_next_job");
 
-    std::unique_lock<std::mutex> lock(m_task_available_mutex);
-
     while (!m_destroying)
     {
-        // Look for work in each priority queue we can execute.
-        for (size_t i = 0; i < (int)priority::count; i++)
         {
-            size_t mask = 1i64 << i;
+            profile_scope scope(profile_scope_type::user_defined, "dequeueing");
 
-            if (((size_t)priorities & mask) != 0)
+            // Look for work in each priority queue we can execute.
+            for (size_t i = 0; i < (int)priority::count; i++)
             {
-                if (get_next_job_from_queue(job_index, m_pending_job_queues[i], mask))
+                size_t mask = 1i64 << i;
+
+                if (((size_t)priorities & mask) != 0)
                 {
-                    return true;
+                    if (get_next_job_from_queue(job_index, m_pending_job_queues[i], mask))
+                    {
+                        return true;
+                    }
                 }
             }
         }
@@ -1081,7 +1032,8 @@ bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_bl
             break;
         }
 
-        m_task_available_cvar.wait(lock);
+        // Wait for next job.
+        wait_for_job_available();
     } 
  
     return false;
@@ -1500,6 +1452,14 @@ void scheduler::notify_job_complete()
 
     std::unique_lock<std::mutex> lock(m_task_complete_mutex);
     m_task_complete_cvar.notify_all();
+}
+
+void scheduler::wait_for_job_available()
+{
+    profile_scope scope_(profile_scope_type::user_defined, "wait_for_job_available");
+
+    std::unique_lock<std::mutex> lock(m_task_available_mutex);
+    m_task_available_cvar.wait(lock);
 }
 
 size_t scheduler::get_logical_core_count()

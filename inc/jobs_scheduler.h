@@ -355,10 +355,7 @@ private:
     struct job_queue
     {
         /**  @todo */
-        size_t* pending_job_indicies = nullptr;
-
-        /**  @todo */
-        size_t pending_job_count = 0;
+        internal::atomic_queue<size_t> pending_job_indicies;
     };
 
     /** Local resources */
@@ -465,6 +462,9 @@ protected:
 
     /** @todo */
     void notify_job_complete();
+
+    /** @todo */
+    void wait_for_job_available();
 
 private:
 
