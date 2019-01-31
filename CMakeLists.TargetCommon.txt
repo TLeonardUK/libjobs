@@ -17,29 +17,11 @@
 #     misrepresented as being the original software.
 #  3. This notice may not be removed or altered from any source distribution.
 
-cmake_minimum_required(VERSION 3.8)
-
-project(7_game_loop C CXX)
-
-include(${libjobs_SOURCE_DIR}/CMakeLists.Common.txt)
-
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
-
-include_directories(
-	${libjobs_SOURCE_DIR}/inc 
-	${libjobs_SOURCE_DIR}/third_party
-)
-
-add_executable(${PROJECT_NAME} main.cpp)
-
-target_link_libraries(${PROJECT_NAME}
-	libjobs
-)
-
-# Copy pix dll to output folder.
-configure_file(${libjobs_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.dll
-			   ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WinPixEventRuntime.dll COPYONLY)
-
-include(${libjobs_SOURCE_DIR}/CMakeLists.TargetCommon.txt)
+# Suffix appropriate build tags.
+if (CMAKE_BUILD_TYPE MATCHES "Debug")
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.debug")
+elseif (CMAKE_BUILD_TYPE MATCHES "Release")
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.release")
+else()
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.test")
+endif()

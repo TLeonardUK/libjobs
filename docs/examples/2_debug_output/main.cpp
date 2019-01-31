@@ -43,14 +43,6 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    if (level == jobs::debug_log_verbosity::verbose)
-    {
-        // Skip this in all but the most extreme debugging cases. Verbose
-        // logging contains a massive dump of information which is fairly useless
-        // in most situations.
-        return;
-    }
-
     printf("%s", message);
 }
 
@@ -63,7 +55,9 @@ void main()
     // This function assigns a function to the scheduler that will be called whenever
     // the scheduler wants to write any debug output. You should disable this in release
     // builds to remove the overhead of formatting logging messages.
-    scheduler.set_debug_output(debug_output);
+    // The second parameter allows you to set the maximum verbosity you want to log, generally
+    // you never want this higher than message unless your heavily debugging the job system.
+    scheduler.set_debug_output(debug_output, jobs::debug_log_verbosity::message);
 
     // Initializes the scheduler.
     jobs::result result = scheduler.init();

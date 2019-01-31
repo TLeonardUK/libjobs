@@ -37,9 +37,4 @@ target_link_libraries(${PROJECT_NAME}
 	libjobs
 )
 
-# If in debug suffix _d to the output name.
-if (CMAKE_BUILD_TYPE MATCHES "Debug")
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}_d")
-else()
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}")
-endif()
+include(${libjobs_SOURCE_DIR}/CMakeLists.TargetCommon.txt)

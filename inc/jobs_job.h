@@ -35,6 +35,7 @@
 #include "jobs_scheduler.h"
 #include "jobs_fiber.h"
 #include "jobs_event.h"
+#include "jobs_counter.h"
 
 namespace jobs {
 
@@ -62,6 +63,7 @@ protected:
 
     friend class jobs::scheduler;
     friend class jobs::event_handle;
+    friend class jobs::counter_handle;
 
     /** @todo */
     bool has_fiber = false;
@@ -123,13 +125,14 @@ public:
  */
 enum class job_status
 {
-    initialized,         /**< Job is initialized and ready for dispatch */
-    pending,             /**< Job is pending execution */
-    running,             /**< Job is running on a worker */
-    sleeping,            /**< Job is sleeping. */
-    waiting_on_event,    /**< Job is waiting for an event to signal. */
-    waiting_on_job,      /**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
-    completed,           /**< Job has completed running */
+    initialized,                        /**< Job is initialized and ready for dispatch */
+    pending,                            /**< Job is pending execution */
+    running,                            /**< Job is running on a worker */
+    sleeping,                           /**< Job is sleeping. */
+    waiting_on_event,                   /**< Job is waiting for an event to signal. */
+    waiting_on_counter,                 /**< Job is waiting for a counter. */
+    waiting_on_job,                     /**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
+    completed,                          /**< Job has completed running */
 };
 
 }; /* nemspace internal */
@@ -268,7 +271,25 @@ public:
 
     /** @todo */
     event_handle wait_event;
-    
+
+    /** @todo */
+    counter_handle wait_counter;
+
+    /** @todo */
+    bool wait_counter_signal;
+
+    /** @todo */
+    size_t wait_counter_value;
+
+    /** @todo */
+    bool wait_counter_at_least_value;
+
+    /** @todo */
+    internal::job_definition* wait_counter_list_prev;
+
+    /** @todo */
+    internal::job_definition* wait_counter_list_next;
+
     /** @todo */
     job_handle wait_job;
 

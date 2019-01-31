@@ -50,6 +50,9 @@ public:
     /** @todo */
     uint64_t get_elapsed_ms();
 
+    /** @todo */
+    uint64_t get_elapsed_us();
+
 private:
 
     /** @todo */

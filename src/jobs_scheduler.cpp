@@ -23,6 +23,7 @@
 #include "jobs_thread.h"
 #include "jobs_fiber.h"
 #include "jobs_event.h"
+#include "jobs_counter.h"
 
 #include <stdarg.h>
 #include <algorithm>
@@ -30,6 +31,7 @@
 
 namespace jobs {
 
+thread_local int32_t scheduler::m_thread_index = 0; 
 thread_local size_t scheduler::m_worker_job_index = 0;
 thread_local bool scheduler::m_worker_job_completed = false;
 thread_local internal::job_context scheduler::m_worker_job_context;
@@ -59,6 +61,24 @@ scheduler::~scheduler()
 
     // Wake up all threads.
     notify_job_available();
+
+    // Join all threads.
+    for (size_t i = 0; i < m_thread_pool_count; i++)
+    {
+        thread_pool& pool = m_thread_pools[i];
+        for (size_t j = 0; j < pool.pool.capacity(); j++)
+        {
+            pool.pool.get_index(j)->join();
+        }
+    }
+
+    // Destroy thread local resources.
+    for (int i = 0; i < m_thread_count; i++)
+    {
+        thread_local_resources& resources = m_thread_local_resources[i];
+        resources.~thread_local_resources();
+    }
+    m_memory_functions.user_free(m_thread_local_resources);    
 }
 
 void* scheduler::default_alloc(size_t size)
@@ -95,7 +115,7 @@ result scheduler::set_profile_functions(const profile_functions& functions)
     return result::success;
 }
 
-result scheduler::set_debug_output(const debug_output_function& function)
+result scheduler::set_debug_output(const debug_output_function& function, debug_log_verbosity max_verbosity)
 {
     if (m_initialized)
     {
@@ -103,6 +123,7 @@ result scheduler::set_debug_output(const debug_output_function& function)
     }
 
     m_debug_output_function = function;
+    m_debug_output_max_verbosity = max_verbosity;
 
     return result::success;
 }
@@ -151,6 +172,18 @@ result scheduler::set_max_events(size_t max_events)
     }
 
     m_max_events = max_events;
+
+    return result::success;
+}
+
+result scheduler::set_max_counters(size_t max_counters)
+{
+    if (m_initialized)
+    {
+        return result::already_initialized;
+    }
+
+    m_max_counters = max_counters;
 
     return result::success;
 }
@@ -273,10 +306,36 @@ result scheduler::init()
         return result;
     }
 
-    // Allocate profile scopes.
-    result = m_profile_scope_pool.init(m_memory_functions, m_max_profile_scopes, [](internal::profile_scope_definition* instance, size_t index)
+    // Allocate thread local resources.
+    m_thread_count = 1; // 1 is for untracked threads.
+    for (size_t i = 0; i < m_thread_pool_count; i++)
     {
-        new(instance) internal::profile_scope_definition();
+        thread_pool& pool = m_thread_pools[i];
+        m_thread_count += pool.thread_count;
+    }
+
+    m_thread_local_resources = (thread_local_resources*)m_memory_functions.user_alloc(sizeof(thread_local_resources) * m_thread_count);
+    for (int i = 0; i < m_thread_count; i++)
+    {
+        thread_local_resources& resources = m_thread_local_resources[i];
+        new(&resources) thread_local_resources();
+
+        result = resources.profile_scope_pool.init(m_memory_functions, m_max_profile_scopes, [](internal::profile_scope_definition* instance, size_t index)
+        {
+            new(instance) internal::profile_scope_definition();
+            return result::success;
+        });
+
+        if (result != result::success)
+        {
+            return result;
+        }
+    }
+
+    // Allocate events.
+    result = m_event_pool.init(m_memory_functions, m_max_events, [](internal::event_definition* instance, size_t index)
+    {
+        new(instance) internal::event_definition();
         return result::success;
     });
 
@@ -285,10 +344,10 @@ result scheduler::init()
         return result;
     }
 
-    // Allocate events.
-    result = m_event_pool.init(m_memory_functions, m_max_events, [](internal::event_definition* instance, size_t index)
+    // Allocate counters.
+    result = m_counter_pool.init(m_memory_functions, m_max_counters, [](internal::counter_definition* instance, size_t index)
     {
-        new(instance) internal::event_definition();
+        new(instance) internal::counter_definition();
         return result::success;
     });
 
@@ -350,10 +409,19 @@ result scheduler::init()
         {
             new(instance) internal::thread(m_memory_functions);
 
+            char buffer[128];
+            memset(buffer, 0, sizeof(buffer));
+#if JOBS_PLATFORM_WINDOWS
+            sprintf_s(buffer, 127, "Worker (Pool=%zi Index=%zi)", i, index);
+#else
+            sprintf(buffer, "Worker (Pool=%zi Index=%zi)", i, index);
+#endif
+
             return instance->init([&]()
             {
+                m_thread_index = m_thread_index_counter++;
                 worker_entry_point(i, index, *instance, pool);
-            });
+            }, buffer);
         });
 
         if (result != result::success)
@@ -369,6 +437,7 @@ result scheduler::init()
     write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t%i max dependencies", m_max_dependencies);
     write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t%i max profile scopes", m_max_profile_scopes);
     write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t%i max events", m_max_events);
+    write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t%i max counters", m_max_counters);
     write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t%i max callbacks", m_max_callbacks);
     write_log(debug_log_verbosity::message, debug_log_group::scheduler, "\t%i thread pools", m_thread_pool_count);
     for (size_t i = 0; i < m_thread_pool_count; i++)
@@ -471,6 +540,58 @@ void scheduler::decrease_event_ref_count(size_t index)
     if (new_ref_count == 0)
     {
         free_event(index);
+    }
+}
+
+result scheduler::create_counter(counter_handle& instance)
+{
+    size_t index = 0;
+
+    result res = m_counter_pool.alloc(index);
+    if (res != result::success)
+    {
+        write_log(debug_log_verbosity::warning, debug_log_group::scheduler, "attempt to create counter, but counter pool is empty. Try increasing scheduler::set_max_counters.");
+        return res;
+    }
+
+    internal::counter_definition& def = get_counter_definition(index);
+
+    write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle allocated, index=%zi ptr=0x%08x", index, &def);
+
+    instance = counter_handle(this, index);
+    return result::success;
+}
+
+void scheduler::free_counter(size_t index)
+{
+    internal::counter_definition& def = get_counter_definition(index);
+    def.reset();
+
+    write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle freed, index=%zi ptr=0x%08x", index, &def);
+
+    m_counter_pool.free(index);
+}
+
+internal::counter_definition& scheduler::get_counter_definition(size_t index)
+{
+    return *m_counter_pool.get_index(index);
+}
+
+void scheduler::increase_counter_ref_count(size_t index)
+{
+    internal::counter_definition& def = get_counter_definition(index);
+    size_t new_ref_count = ++def.ref_count;
+    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle ++, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
+}
+
+void scheduler::decrease_counter_ref_count(size_t index)
+{
+    internal::counter_definition& def = get_counter_definition(index);
+    size_t new_ref_count = --def.ref_count;
+    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle --, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
+    if (new_ref_count == 0)
+    {
+        free_counter(index);
     }
 }
 
@@ -620,6 +741,10 @@ void scheduler::write_log(debug_log_verbosity level, debug_log_group group, cons
     {
         return;
     }
+    if ((int)level > (int)m_debug_output_max_verbosity)
+    {
+        return;
+    }
 
     std::lock_guard<std::mutex> lock(m_log_mutex);
 
@@ -709,6 +834,8 @@ internal::job_definition& scheduler::get_job_definition(size_t index)
 
 result scheduler::dispatch_job(size_t index)
 {
+    profile_scope scope_(profile_scope_type::user_defined, "dispatch_job");
+
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
     internal::job_definition& def = get_job_definition(index);
@@ -756,13 +883,16 @@ result scheduler::dispatch_job(size_t index)
 
 result scheduler::requeue_job(size_t index)
 {
+    profile_scope scope(profile_scope_type::user_defined, "requeue_job");
+
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
     internal::job_definition& def = get_job_definition(index);
 
     if (def.status != internal::job_status::sleeping &&
         def.status != internal::job_status::waiting_on_event &&
-        def.status != internal::job_status::waiting_on_job)
+        def.status != internal::job_status::waiting_on_job &&
+        def.status != internal::job_status::waiting_on_counter)
     {
         def.status = internal::job_status::pending;
     }
@@ -810,6 +940,19 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
             // Can't do anything with a sleeping job, just shift it to the back of the queue and leave it for now.
             shift_job_to_back = true;
         }
+        // If waiting on an counter value, wake back up when value is seen.
+        else if (def.status == internal::job_status::waiting_on_counter)
+        {
+            if (def.wait_counter_signal)
+            {
+                remove_job = true;
+                return_job = true;
+            }
+            else
+            {
+                shift_job_to_back = true;
+            }
+        }
         // If waiting on an event, wake back up when event is complete, otherwise shift to back of job queue.
         else if (def.status == internal::job_status::waiting_on_event)
         {
@@ -844,21 +987,7 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
         }
         else
         {
-            bool dependencies_satisfied = true;
-
-            // Check dependencies are all satisfied.
-            /*job_dependency* dep = def.first_dependency;
-            while (dep != nullptr)
-            {
-                if (!dep->job.is_complete())
-                {
-                    dependencies_satisfied = false;
-                    break;
-                }
-                dep = dep->next;
-            }*/
-
-            dependencies_satisfied = (def.pending_predecessors == 0);
+            bool dependencies_satisfied = (def.pending_predecessors == 0);
 
             if (dependencies_satisfied)
             {
@@ -927,6 +1056,8 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
 bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_block)
 {
+    profile_scope scope(profile_scope_type::user_defined, "get_next_job");
+
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
     while (!m_destroying)
@@ -998,14 +1129,12 @@ void scheduler::complete_job(size_t job_index)
     // If job had successors, invoke task available cvar to wake everyone up.
     if (needs_to_wake_up_successors)
     {
-        std::unique_lock<std::mutex> lock(m_task_available_mutex);
-        m_task_available_cvar.notify_all();
+        notify_job_available();
     }
 
     // Wake up anyone waiting for tasks to complete.
     {
-        std::unique_lock<std::mutex> lock(m_task_complete_mutex);
-        m_task_complete_cvar.notify_all();
+        notify_job_complete();
     }
 }
 
@@ -1170,24 +1299,27 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
 
         // Queue a wakeup.
         size_t schedule_handle;
-        result res = m_callback_scheduler.schedule(wait_timeout, schedule_handle, [&]() {
-
-            // Do this atomatically to make sure we don't set it to pending after the scheduler 
-            // has already done that due to this event being signalled.
-            internal::job_status expected = internal::job_status::waiting_on_job;
-            if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
-            {
-                timeout_called = true;
-                notify_job_available();
-            }
-
-        });
-
-        // Failed to schedule a wakeup? Abort.
-        if (res != result::success)
+        if (!wait_timeout.is_infinite())
         {
-            context->job_def->status = internal::job_status::pending;
-            return res;
+            result res = m_callback_scheduler.schedule(wait_timeout, schedule_handle, [&]() {
+
+                // Do this atomatically to make sure we don't set it to pending after the scheduler 
+                // has already done that due to this event being signalled.
+                internal::job_status expected = internal::job_status::waiting_on_job;
+                if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
+                {
+                    timeout_called = true;
+                    notify_job_available();
+                }
+
+            });
+
+            // Failed to schedule a wakeup? Abort.
+            if (res != result::success)
+            {
+                context->job_def->status = internal::job_status::pending;
+                return res;
+            }
         }
 
         // Switch back to worker which will requeue fiber for execution later.			
@@ -1203,7 +1335,10 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
         }
 
         // Cancel callback and clear our job handle.
-        m_callback_scheduler.cancel(schedule_handle);
+        if (!wait_timeout.is_infinite())
+        {
+            m_callback_scheduler.cancel(schedule_handle);
+        }
 
         return result::success;
     }
@@ -1261,22 +1396,25 @@ bool scheduler::is_idle() const
 result scheduler::alloc_scope(internal::profile_scope_definition*& output)
 {
     size_t index;
-    result res = m_profile_scope_pool.alloc(index);
+    result res = m_thread_local_resources[m_thread_index].profile_scope_pool.alloc_unguarded(index);
     if (res != result::success)
     {
         return res;
     }
-    output = m_profile_scope_pool.get_index(index);
+    output = m_thread_local_resources[m_thread_index].profile_scope_pool.get_index(index);
     return result::success;
 }
 
 result scheduler::free_scope(internal::profile_scope_definition* scope)
 {
-    return m_profile_scope_pool.free(scope);
+    return m_thread_local_resources[m_thread_index].profile_scope_pool.free_unguarded(scope);
 }
 
 result scheduler::sleep(timeout duration)
 {
+    // I hope this isn't intentional ...
+    assert(!duration.is_infinite());
+
     internal::job_definition* definition = get_active_job_definition();
 
     // If we have a job context, put it to sleep.
@@ -1350,8 +1488,18 @@ internal::job_definition* scheduler::get_active_job_definition()
 
 void scheduler::notify_job_available()
 {
+    profile_scope scope_(profile_scope_type::user_defined, "notify_job_available");
+
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
     m_task_available_cvar.notify_all();
+}
+
+void scheduler::notify_job_complete()
+{
+    profile_scope scope_(profile_scope_type::user_defined, "notify_job_complete");
+
+    std::unique_lock<std::mutex> lock(m_task_complete_mutex);
+    m_task_complete_cvar.notify_all();
 }
 
 size_t scheduler::get_logical_core_count()

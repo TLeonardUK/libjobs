@@ -36,11 +36,6 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    if (level == jobs::debug_log_verbosity::verbose)
-    {
-        return;
-    }
-
     printf("%s", message);
 }
 

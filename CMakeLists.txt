@@ -55,8 +55,8 @@ include_directories(
 
 # Main library 
 add_library(${PROJECT_NAME} STATIC
-	"src/jobs.cpp"
 	"src/jobs_callback_scheduler.cpp"
+	"src/jobs_counter.cpp"
 	"src/jobs_scheduler.cpp"
 	"src/jobs_thread.cpp"
 	"src/jobs_fiber.cpp"
@@ -68,12 +68,7 @@ add_library(${PROJECT_NAME} STATIC
 
 target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
 
-# If in debug suffix _d to the output name.
-if (CMAKE_BUILD_TYPE MATCHES "Debug")
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}_d")
-else()
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}")
-endif()
+include(${libjobs_SOURCE_DIR}/CMakeLists.TargetCommon.txt)
 
 # Generate documentation if available.
 if (BUILD_DOC)

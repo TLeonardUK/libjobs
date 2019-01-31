@@ -34,11 +34,6 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    if (level == jobs::debug_log_verbosity::verbose)
-    {
-        return;
-    }
-
     printf("%s", message);
 }
 
@@ -77,9 +72,16 @@ void main()
     result = scheduler.create_event(event_1, true);
     assert(result == jobs::result::success);
 
+    // Create an counter. Counters can be throught of as sempahores but with far more control over the signal count.
+    // They allow you to add values, remove values (and block if it would go negative), and wait for specific values to be set.
+    // They are incredibly useful for synchronizing large amounts of jobs together.
+    jobs::counter_handle counter_1;
+    result = scheduler.create_counter(counter_1);
+    assert(result == jobs::result::success);
+
     // Allocates a few jobs with different names.
-    const int job_count = 4;
-    const char* job_names[job_count] = { "Job 1 (Sleeping)", "Job 2 (Signalling Event)", "Job 3 (Waiting For Event Signal)", "Job 4 (Waiting On Sleeping Job)" };
+    const int job_count = 5;
+    const char* job_names[job_count] = { "Job 1 (Sleeping)", "Job 2 (Signalling Event)", "Job 3 (Waiting For Event Signal)", "Job 4 (Waiting On Sleeping Job)", "Job 5 (Waiting On Counter" };
     jobs::job_handle jobs[job_count];
     for (int i = 0; i < job_count; i++)
     {
@@ -98,6 +100,8 @@ void main()
         printf("%s: starting sleep\n", job_names[0]);
         jobs::scheduler::sleep(8 * 1000);
         printf("%s: finish sleep\n", job_names[0]);
+
+        counter_1.add(1);
     });
 
     // Make the second job signal an event.
@@ -105,6 +109,8 @@ void main()
         jobs::scheduler::sleep(4 * 1000);
         printf("%s: signaling event\n", job_names[1]);
         event_1.signal();
+
+        counter_1.add(1);
     });
 
     // Make the third job wait on the event signal.
@@ -117,6 +123,8 @@ void main()
         event_1.wait(jobs::timeout::infinite);
 
         printf("%s: continuing\n", job_names[2]);
+
+        counter_1.add(1);
     });
 
     // Make the forth job wait on the first sleeping job.
@@ -129,6 +137,18 @@ void main()
         jobs[0].wait(jobs::timeout::infinite);
 
         printf("%s: continuing\n", job_names[3]);
+
+        counter_1.add(1);
+    });
+
+    // Make the fifth job that waits until a counter (incremented by other jobs) gets to a value.
+    jobs[4].set_work([&]() {
+        printf("%s: waiting on counter\n", job_names[4]);
+
+        // This will wait until the counter is incremented by all the other jobs.
+        counter_1.wait_for(job_count - 1, jobs::timeout::infinite);
+
+        printf("%s: continuing\n", job_names[4]);
     });
 
     // Dispatch all jobs.

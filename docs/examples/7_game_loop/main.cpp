@@ -20,149 +20,338 @@
 */
 
 // This example show a way you could implement a game loop using
-// a fiber job system to handle the updating and dependencies between objects.
+// a fiber job system to update while implicitly handling 
+// dependencies between objects.
 
 // Comments on topics previously discussed in other examples have been removed 
 // or simplified, go back to older examples if you are unsure of anything.
 
 #include <jobs.h>
 #include <cassert>
+#include <vector>
+#include <pix/include/WinPixEventRuntime/pix3.h>
 
-void debug_output(
-    jobs::debug_log_verbosity level, 
-    jobs::debug_log_group group, 
-    const char* message)
+// Holds general information used to process a simulate a frame.
+struct frame_info
 {
-    if (level == jobs::debug_log_verbosity::verbose)
-    {
-        return;
-    }
+    // Scheduler used for running all our entities.
+    jobs::scheduler scheduler;
 
-    printf("%s", message);
-}
+    // Number of tickables that currently exist.
+    std::atomic<size_t> tickable_count = 0;
 
-template <typename base_class>
+    // Counter used to synchronize tickables with the start of a frame.
+    jobs::counter_handle frame_counter;
+
+    // Counter used to synchronize the game loop with all tickables completing
+    jobs::counter_handle frame_end_counter;
+};
+
+// The tickable is our base class for all things that need to update each frame.
+// Each tickable creates a persistent job that manages synchronization with the
+// start of a frame, and calling the virtual tick() method in derived classes.
+//
+// Tickables should be passed to dependent objects as const pointers. When a dependent
+// object wants to access it, they should call the sync() method which will return
+// a non-const pointer after the tickable has finished it's tick. This implicitly
+// manages dependencies, and allows you to always use up-to-date state information without
+// having to fall back to typical solutions like double-buffer or frame-delaying state.
+// 
+// It should be noted that having a persistent job has pros and cons. The main benefit
+// is you don't have to waste time rescheduling it each frame, the downside is that
+// you cannot recycle fiber context's, so you end up with much larger memory requirements, 
+// requiring at least one fiber per tickable at all times.
+template <typename super_class>
 class tickable
 {
 public:
-    void init(jobs::scheduler& scheduler)
+
+    // Initializes the tickable with a given block of frame information.
+    void init(frame_info* info, const char* name)
     {
+        m_tickable_index = info->tickable_count++;
+        m_frame_info = info;
+
+        // Creates a new counter that stores the last frame index this tickable
+        // has completed a tick for. This is used by the sync() method to ensure
+        // completion of the current frame before returning.
+        jobs::result result = info->scheduler.create_counter(m_last_tick_frame);
+        assert(result == jobs::result::success);
+
+        // Update last tick frame with current frame index.
+        size_t current_frame;
+        result = info->frame_counter.get(current_frame);
+        assert(result == jobs::result::success);
+
+        result = m_last_tick_frame.set(current_frame);
+        assert(result == jobs::result::success);
+
+        // Allocate job to run this objects tick.
+        result = info->scheduler.create_job(m_tick_job);
+        assert(result == jobs::result::success);
+
+        // Setup our tickables job, which just calls the tick_loop() method.
+        m_tick_job.set_tag(name);
+        m_tick_job.set_stack_size(16 * 1024);
+        m_tick_job.set_priority(jobs::priority::low);
+        m_tick_job.set_work([=]() { tick_loop(); });
+
+        // Start up the tick task.
+        m_tick_job.dispatch();
     }
 
-    base_class* sync() const
+    // Will return a non-const pointer after the tickable has finished it's tick. 
+    // This allows implicit managagement of dependencies.
+    super_class* sync() const
     {
-        own_job_handle.wait();
-
         // Allows us to pass a const tickable everywhere and force
         // any entities that interactive with it to perform a sync()
         // if they won't to perform anything that causes modifications.
-        return const_cast<base_class*>(this);
+        const super_class* super_non_const_ptr = static_cast<const super_class*>(this);
+        super_class* super_ptr = const_cast<super_class*>(super_non_const_ptr);
+
+        // Wait until we have finished this tickables tick for this frame.
+        size_t current_frame;
+        super_ptr->m_frame_info->frame_counter.get(current_frame);
+        super_ptr->m_last_tick_frame.wait_for(current_frame);
+
+        return super_ptr;
     }
 
 protected:
+
+    // Implemented in derived classes to implement actual functionality.
     virtual void tick() = 0;
 
 private:
+
+    // Core loop of the tickables job. 
     void tick_loop()
     {
-        while (!destroyed)
+        while (true)
         {
-            frame_start_event.wait();
-            tick();
+            // Wait for the next frame to start processing.
+            {
+                jobs::profile_scope(jobs::profile_scope_type::user_defined, "wait for frame");
+
+                size_t frame = 0;
+                jobs::result result = m_last_tick_frame.get(frame);
+                assert(result == jobs::result::success);
+
+                m_frame_info->frame_counter.wait_for(frame + 1);
+            }
+
+            // Perform any processing required.
+            {
+                jobs::profile_scope(jobs::profile_scope_type::user_defined, "tick");
+
+                tick();
+            }
+
+            // Mark as complete for this frame.
+            {
+                jobs::profile_scope(jobs::profile_scope_type::user_defined, "mark complete");
+
+                m_frame_info->frame_end_counter.add(1);
+                m_last_tick_frame.add(1);
+            }
         }
     }
 
+protected:
+
+    // A unique index of this tickable, used for debug logging.
+    size_t m_tickable_index;
+
+private:
+
+    // General info required to simulate a frame.
+    frame_info* m_frame_info = nullptr;
+
+    // Handle to tickables job.
+    jobs::job_handle m_tick_job;
+
+    // Counter holding the index of the last frame a full tick was performed for.
+    jobs::counter_handle m_last_tick_frame;
+
 };
 
+// Demonstration class of what you could implement as a tickable. In a proper 
+// implementation this could be responsible for determining and responding to
+// collisions between different entities.
 class physics_system : public tickable<physics_system>
 {
 public:
-    void init(jobs::scheduler& scheduler)
+    void init(frame_info* info)
     {
-        tickable::init(scheduler);
-    }
-
-    size_t register_aabb(float x, float y, float width, float height)
-    {
-    }
-
-    size_t unregister_aabb()
-    {
-    }
-
-    void update_aabb(size_t position)
-    {
-    }
-
-    bool is_colliding()
-    {
+        tickable::init(info, "physics_system");
     }
 
 protected:
     virtual void tick()
     {
-        // Check for collisions between entities.
+        // Here you would do some collision checking between entities.
+
+        //printf("physics_system[%zi]: ticked\n", m_tickable_index);
     }
 
 };
 
+// Demonstration class of a basic entity. In a proper implementation this would
+// represent an object in your game-world, which would actually do something :).
 class entity : public tickable<entity>
 {
 public:
-    void init(jobs::scheduler& scheduler, const physics_system* physics)
+    void init(frame_info* info, const physics_system* physics, std::vector<const entity*> dependencies)
     {
-        tickable::init(scheduler);
+        tickable::init(info, "entity");
+        m_physics = physics;
+        m_dependencies = dependencies;
     }
 
 protected:
     virtual void tick()
     {
-        // move about at random.
+        // Demonstrates get a synchronized physics system which has finished its tick. This ensures
+        // that the entity would be able to access a stable physics information this frame without
+        // ordering issues.
+        //physics_system* physics = m_physics->sync();
+
+        // Sync to our dependent entities if we have any
+        {
+            jobs::profile_scope(jobs::profile_scope_type::user_defined, "sync block");
+
+            for (auto& entity : m_dependencies)
+            {
+                jobs::profile_scope(jobs::profile_scope_type::user_defined, "sync");
+                //entity->sync();
+            }
+        }
+
+        // Here you would perform typical entity processing, checking for collision, moving, etc.
+        //printf("entity[%zi]: ticked\n", m_tickable_index);
     }
 
 private:
+
+    // Pointer to our physics system which we will sync to access.
     const physics_system* m_physics;
+
+    // Pointer to a random dependent entity which we will sync to access.
+    std::vector<const entity*> m_dependencies;
 
 };
 
 void main()
 {
-    jobs::scheduler scheduler;
-    scheduler.add_thread_pool(jobs::scheduler::get_logical_core_count(), jobs::priority::all);
-    scheduler.add_fiber_pool(100, 16 * 1024);
-    scheduler.set_debug_output(debug_output);
+    // The frame-info struct contains all our general information used for scheduling
+    // jobs and synchronising frames.
+    frame_info info;
+
+    // Setup profiling functions so we can examine execution in pix.
+    jobs::profile_functions profile_functions;
+    profile_functions.enter_scope = [](jobs::profile_scope_type type, const char* tag)
+    {
+        UINT64 color;
+
+        // We choose different colors dependending on the type of scope we are emitting.
+        if (type == jobs::profile_scope_type::worker)
+        {
+            color = PIX_COLOR(255, 0, 0);
+        }
+        else if (type == jobs::profile_scope_type::fiber)
+        {
+            color = PIX_COLOR(0, 0, 255);
+        }
+        else
+        {
+            color = PIX_COLOR(0, 255, 0);
+        }
+
+        // For this example we emit a pix event. You should replace this with your own profiler
+        // API, vtune, razor, whatever.
+        PIXBeginEvent(color, "%s", tag);
+    };
+    profile_functions.leave_scope = []()
+    {
+        // Leave the pix event at the top of the stack.
+        PIXEndEvent();
+    };
+
+    // Setup the job scheduler.
+    info.scheduler.add_thread_pool(4, jobs::priority::all);
+    info.scheduler.set_max_callbacks(5000);
+    info.scheduler.set_max_counters(5000);
+    info.scheduler.set_max_dependencies(5000);
+    info.scheduler.set_max_events(5000);
+    info.scheduler.set_max_jobs(5000);
+    info.scheduler.set_max_profile_scopes(5000);
+    info.scheduler.add_fiber_pool(5000, 16 * 1024);
+    info.scheduler.set_profile_functions(profile_functions);
+    info.scheduler.set_debug_output([](jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
+    {
+        printf("%s", message);
+    });
 
     // Initializes the scheduler.
-    jobs::result result = scheduler.init();
+    jobs::result result = info.scheduler.init();
     assert(result == jobs::result::success);
 
-    // Create an event thats fired at the start of each frame.
-    jobs::event_handle frame_start_event;
-    result = scheduler.create_event(frame_start_event, true);
+    // Create a counter that increments each frame so tickables can sync to the start each frame.
+    result = info.scheduler.create_counter(info.frame_counter);
     assert(result == jobs::result::success);
 
-    // Create a physics system which will run in a fiber.
+    // Create a counter to determine when all tickables have finished a frame.
+    result = info.scheduler.create_counter(info.frame_end_counter);
+    assert(result == jobs::result::success);
+
+    // Create a dummy physics system tickable.
     physics_system physics;
-    physics.init(scheduler);
+    physics.init(&info);
 
-    // Create a handful of entities that will just move around the screen at random.
-    entity entities[100];
-    for (int i = 0; i < 100; i++)
+    // Create a handful of dummy entities.
+    const size_t entity_count = 1000;
+
+    entity entities[entity_count];
+    std::vector<const entity*> dependencies;
+    for (int i = 0; i < entity_count/2; i++)
     {
-        entities.init(scheduler, &physics);
+        entities[i].init(&info, &physics, { });
+        dependencies.push_back(&entities[i]);
+    }
+
+    // Create a handful of entities which will sync to the first lot.
+    for (int i = entity_count/2; i < entity_count; i++)
+    {
+        entities[i].init(&info, &physics, { }); //&entities[i - (entity_count/2)] });
     }
 
     // Main loop.
     while (true)
     {
-        // Wait for everything to be waiting for frame-start.
-        scheduler.wait_until_idle();
+        jobs::internal::stopwatch timer;
+        timer.start();
 
-        // Wake everything up.
-        frame_start_event.signal();
+        // Log out the current frame index.
+        size_t frame_index;
+        info.frame_counter.get(frame_index);
+
+        // Incrementing the frame counter kicks off all tickables to run their next simulation step.
+        info.frame_counter.add(1);
+
+        // Each tickable adds one to the counter, so this blocks until every tickable has finished for the frame.
+        info.frame_end_counter.remove(info.tickable_count);
+
+        timer.stop();
+        printf("=== Frame %zi finished in %.4f ms\n", frame_index + 1, timer.get_elapsed_us() / 1000.0f);
+
+        // Pause between frames so we can actually read the output :).
+        jobs::scheduler::sleep(1000);
     }
 
-    printf("All jobs completed.\n");
+    // Expected execution:
+    //  Notice the order in which different things get ticked, namely how ordering is implicitly dealt
+    //  with by using job syncronization.
 
     return;
 }

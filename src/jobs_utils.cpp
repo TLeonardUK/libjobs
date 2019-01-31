@@ -53,6 +53,23 @@ uint64_t stopwatch::get_elapsed_ms()
     return (uint64_t)elapsed;
 }
 
+uint64_t stopwatch::get_elapsed_us()
+{
+    std::chrono::high_resolution_clock::time_point end_time;
+    if (m_has_end)
+    {
+        end_time = m_end_time;
+    }
+    else
+    {
+        end_time = std::chrono::high_resolution_clock::now();
+    }
+
+    float elapsed = std::chrono::duration<float, std::chrono::microseconds::period>(end_time - m_start_time).count();
+
+    return (uint64_t)elapsed;
+}
+
 }; /* namespace internal */
 
 const timeout timeout::infinite = timeout(UINT64_MAX);

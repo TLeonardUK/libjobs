@@ -172,6 +172,21 @@ public:
     }
 
     /** @todo */
+    result alloc_unguarded(size_t& output)
+    {
+        if (m_free_object_count == 0)
+        {
+            return result::out_of_objects;
+        }
+
+        size_t free_index = --m_free_object_count;
+
+        output = m_free_object_indices[free_index];
+
+        return result::success;
+    }
+
+    /** @todo */
     result free(size_t index)
     {
         // @todo: make this atomic
@@ -189,6 +204,26 @@ public:
         // @todo: make this atomic
         std::lock_guard<std::mutex> lock(m_access_mutex);
 
+        size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
+
+        m_free_object_indices[m_free_object_count] = index;
+        m_free_object_count++;
+
+        return result::success;
+    }
+
+    /** @todo */
+    result free_unguarded(size_t index)
+    {
+        m_free_object_indices[m_free_object_count] = index;
+        m_free_object_count++;
+
+        return result::success;
+    }
+
+    /** @todo */
+    result free_unguarded(data_type* object)
+    {
         size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
 
         m_free_object_indices[m_free_object_count] = index;

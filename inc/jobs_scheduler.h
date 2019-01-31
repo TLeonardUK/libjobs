@@ -42,6 +42,7 @@ namespace jobs {
     
 class job_handle;
 class event_handle;
+class counter_handle;
 
 namespace internal {
     
@@ -52,6 +53,7 @@ class job_context;
 class thread;
 class fiber;
 class event_definition;
+class counter_definition;
 
 }; /* namespace internal */
 
@@ -125,10 +127,11 @@ public:
      * \brief Provides a function which all debug output will be passed.
      *
      * \param function Function to pass all debug output.
+     * \param max_verbosity Any debug output more verbose than this will be dropped. Saves perf formatting the logs.
      *
      * \return Value indicating the success of this function.
      */
-    result set_debug_output(const debug_output_function& function);
+    result set_debug_output(const debug_output_function& function, debug_log_verbosity max_verbosity = debug_log_verbosity::message);
 
     /**
      * \brief Sets the maximum number of jobs.
@@ -160,6 +163,8 @@ public:
      * If you have heavily nested profile scope call graphs, you should increase this value.
      * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
      *
+     * This value is per worker thread.
+     *
      * \param max_scopes New maximum number of profile scopes.
      *
      * \return Value indicating the success of this function.
@@ -176,6 +181,17 @@ public:
      * \return Value indicating the success of this function.
      */
     result set_max_events(size_t max_events);
+
+    /**
+     * \brief Sets the maximum number of counters that can be created and used for syncronization.
+     *
+     * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
+     *
+     * \param max_counters New maximum number of counters.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result set_max_counters(size_t max_counters);
 
     /**
      * \brief Sets the maximum number of latent callbacks that can be scheduld and used for syncronization.
@@ -253,6 +269,15 @@ public:
      * \return Value indicating the success of this function.
      */
     result create_event(event_handle& instance, bool auto_reset = false);
+
+    /**
+     * \brief Creates a new counter that can be used for job syncronization.
+     *
+     * \param instance On success the created counter will be stored here.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result create_counter(counter_handle& instance);
 
     /** @todo */
     result wait_until_idle(timeout wait_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
@@ -336,10 +361,18 @@ private:
         size_t pending_job_count = 0;
     };
 
+    /** Local resources */
+    struct thread_local_resources
+    {
+        /** Pool of profile scopes to be allocated. */
+        internal::fixed_pool<internal::profile_scope_definition> profile_scope_pool;
+    };
+
 protected:
 
     friend class job_handle;
     friend class event_handle;
+    friend class counter_handle;
     friend class internal::job_context;
     friend class internal::callback_scheduler;
 
@@ -416,7 +449,22 @@ protected:
     void decrease_event_ref_count(size_t index);
 
     /** @todo */
+    internal::counter_definition& get_counter_definition(size_t index);
+
+    /** @todo */
+    void free_counter(size_t index);
+
+    /** @todo */
+    void increase_counter_ref_count(size_t index);
+
+    /** @todo */
+    void decrease_counter_ref_count(size_t index);
+
+    /** @todo */
     void notify_job_available();
+
+    /** @todo */
+    void notify_job_complete();
 
 private:
 
@@ -489,6 +537,9 @@ private:
     /** Function to pass all debug output */
     debug_output_function m_debug_output_function = nullptr;
 
+    /** Max output verbosity of log messages. */
+    debug_log_verbosity m_debug_output_max_verbosity;
+
     /** Maximum size of each log message. */
     static const int max_log_size = 1024;
 
@@ -531,20 +582,35 @@ private:
     /** Maximum number of profile scopes we can have. */
     size_t m_max_profile_scopes = 1000;
 
-    /** Pool of profile scopes to be allocated. */
-    internal::fixed_pool<internal::profile_scope_definition> m_profile_scope_pool;
-
     /** Maximum number of events we can have. */
     size_t m_max_events = 100;
 
     /** Pool of events that can be allocated. */
     internal::fixed_pool<internal::event_definition> m_event_pool;
 
+    /** Maximum number of counters we can have. */
+    size_t m_max_counters = 100;
+
+    /** Pool of events that can be allocated. */
+    internal::fixed_pool<internal::counter_definition> m_counter_pool;
+
     /** Maximum number of callbacks we can have. */
     size_t m_max_callbacks = 100;
 
     /** Instance responsable for queueing and calling latent callbacks. */
     internal::callback_scheduler m_callback_scheduler;
+
+    /** Thread local resources */
+    thread_local_resources* m_thread_local_resources;
+
+    /** Counter to allocate unique thread indices */
+    std::atomic<int32_t> m_thread_index_counter = 1; // starts at one as 0 is taken by untracked threads (user threads).
+
+    /** Total number of tracked threads. */
+    size_t m_thread_count = 0;
+
+    /** Thread local storage for unique worker index, used to access pre-allocated thread-specific resources. */
+    static thread_local int32_t m_thread_index;
 
     /** Thread local storage for a worker threads current job. */
     static thread_local size_t m_worker_job_index;

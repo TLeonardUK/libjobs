@@ -20,8 +20,15 @@
 */
 
 #include "jobs_thread.h"
+#include "jobs_platform.h"
 
 #include <cassert>
+#include <cstdlib>
+
+#if JOBS_PLATFORM_WINDOWS
+#include <windows.h>
+#include <processthreadsapi.h>
+#endif
 
 namespace jobs {
 namespace internal {
@@ -36,9 +43,23 @@ thread::~thread()
     join();
 }
 
-result thread::init(const thread_entry_point& entry_point)
+result thread::init(const thread_entry_point& entry_point, const char* name)
 {
-    std::thread new_thread(entry_point);
+#ifdef JOBS_PLATFORM_WINDOWS
+    wchar_t wide_name[128];
+    std::mbstate_t state = std::mbstate_t();
+    size_t ret_size = 0;
+    mbsrtowcs_s(&ret_size, wide_name, &name, 128, &state);
+#endif
+
+    std::thread new_thread([entry_point, wide_name]() {
+
+#ifdef JOBS_PLATFORM_WINDOWS
+        SetThreadDescription(GetCurrentThread(), wide_name);
+#endif
+
+        entry_point();
+    });
     m_thread.swap(new_thread);
 
     assert(m_thread.joinable());

@@ -19,6 +19,19 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
+// @todo: reimplement this to just use a counter internally, 
+//        less implementation work.
+
+/*
+event.signal = counter.set(1)
+event.reset = counter.set(0)
+
+auto-reset:
+    event.wait = counter.remove(1)
+manual-reset:
+    event.wait = counter.wait_for(1)
+*/
+
 /**
  *  \file jobs_event.h
  *
@@ -143,4 +156,4 @@ private:
 
 }; /* namespace jobs */
 
-#endif /* __JOBS_JOB_H__ */
+#endif /* __JOBS_EVENT_H__ */

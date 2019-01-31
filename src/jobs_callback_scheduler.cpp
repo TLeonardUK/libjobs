@@ -89,7 +89,7 @@ result callback_scheduler::init(jobs::scheduler* scheduler, size_t max_callbacks
                 m_schedule_updated_cvar.wait_for(lock, std::chrono::milliseconds(time_till_next_callback));
             }
         }
-    });
+    }, "Latent Callback Scheduler");
 
     return result::success;
 }
@@ -107,7 +107,6 @@ void callback_scheduler::run_callbacks()
                 def.callback();
 
                 size_t handle = i + (def.generation * m_callback_pool.capacity());
-                //printf("Complete handle=%llu index=%llu generation=%llu\n", handle, i, def.generation);
 
                 def.callback = nullptr;
                 def.active = false;
@@ -158,7 +157,6 @@ result callback_scheduler::schedule(timeout duration, size_t& handle, const call
     m_schedule_updated_cvar.notify_all();
 
     handle = index + (def->generation * m_callback_pool.capacity());
-    //printf("Alloc handle=%llu index=%llu generation=%llu\n", handle, index, def->generation);
 
     return result::success;
 }
@@ -169,8 +167,6 @@ result callback_scheduler::cancel(size_t handle)
 
     size_t index = handle % m_callback_pool.capacity();
     size_t generation = (handle / m_callback_pool.capacity());
-
-    //printf("Free handle=%llu index=%llu generation=%llu\n", handle, index, generation);
 
     callback_definition* def = m_callback_pool.get_index(index);
     if (def->generation != generation)

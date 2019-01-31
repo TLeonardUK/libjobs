@@ -121,24 +121,27 @@ result event_handle::wait(timeout in_timeout)
 
             // Queue a wakeup.
             size_t schedule_handle;
-            result res = m_scheduler->m_callback_scheduler.schedule(in_timeout, schedule_handle, [&]() {
-
-                // Do this atomatically to make sure we don't set it to pending after the scheduler 
-                // has already done that due to this event being signalled.
-                internal::job_status expected = internal::job_status::waiting_on_event;
-                if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
-                {
-                    timeout_called = true;
-                    m_scheduler->notify_job_available();
-                }
-
-            });
-
-            // Failed to schedule a wakeup? Abort.
-            if (res != result::success)
+            if (!in_timeout.is_infinite())
             {
-                context->job_def->status = internal::job_status::pending;
-                return res;
+                result res = m_scheduler->m_callback_scheduler.schedule(in_timeout, schedule_handle, [&]() {
+
+                    // Do this atomatically to make sure we don't set it to pending after the scheduler 
+                    // has already done that due to this event being signalled.
+                    internal::job_status expected = internal::job_status::waiting_on_event;
+                    if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
+                    {
+                        timeout_called = true;
+                        m_scheduler->notify_job_available();
+                    }
+
+                });
+
+                // Failed to schedule a wakeup? Abort.
+                if (res != result::success)
+                {
+                    context->job_def->status = internal::job_status::pending;
+                    return res;
+                }
             }
 
             // Switch back to worker which will requeue fiber for execution later.			
@@ -154,7 +157,10 @@ result event_handle::wait(timeout in_timeout)
             }
 
             // Cancel callback and clear our job handle.
-            m_scheduler->m_callback_scheduler.cancel(schedule_handle);
+            if (!in_timeout.is_infinite())
+            {
+                m_scheduler->m_callback_scheduler.cancel(schedule_handle);
+            }
 
             //  Not signalled? 
             if (!consume_signal())

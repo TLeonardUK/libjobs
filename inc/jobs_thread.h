@@ -66,10 +66,11 @@ public:
      * \brief Initializes this thread of execution and begins running the thread.
      *
      * \param entry_point Function that should be run when the thread starts.
+     * \param name Contextual name of this thread to show in debugger.
      *
      * \return Value indicating the success of this function.
      */
-    result init(const thread_entry_point& entry_point);
+    result init(const thread_entry_point& entry_point, const char* name);
 
     /**
      * \brief Blocks until thread completes execution.

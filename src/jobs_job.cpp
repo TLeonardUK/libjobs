@@ -138,6 +138,7 @@ void job_definition::reset()
     tag[0] = '\0';
     pending_predecessors = 0;
 
+    wait_counter = counter_handle();
     wait_event = event_handle();
     wait_job = job_handle();
 
@@ -425,9 +426,11 @@ bool job_handle::operator!=(const job_handle& rhs) const
 profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
 {
     internal::job_context* context = scheduler::get_active_job_context();
-    assert(context != nullptr);
 
-    context->enter_scope(type, tag);
+    if (context != nullptr)
+    {
+        context->enter_scope(type, tag);
+    }
 
     m_context = context;
 }
@@ -435,13 +438,16 @@ profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
 profile_scope::~profile_scope()
 {
     internal::job_context* context = scheduler::get_active_job_context();
-    assert(context != nullptr);
+   // assert(context != nullptr);
 
     // Not sure if this situation is even possible, but make sure we always
     // leave on the same context we enter on.
     assert(context == m_context);
 
-    context->leave_scope();
+    if (context != nullptr)
+    {
+        context->leave_scope();
+    }
 }
 
 }; /* namespace jobs */
