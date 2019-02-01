@@ -279,15 +279,14 @@ void main()
     };
 
     // Setup the job scheduler.
-    info.scheduler.add_thread_pool(4, jobs::priority::all);
+    info.scheduler.add_thread_pool(jobs::scheduler::get_logical_core_count(), jobs::priority::all);
     info.scheduler.set_max_callbacks(5000);
     info.scheduler.set_max_counters(5000);
     info.scheduler.set_max_dependencies(5000);
-    info.scheduler.set_max_events(5000);
     info.scheduler.set_max_jobs(5000);
     info.scheduler.set_max_profile_scopes(5000);
     info.scheduler.add_fiber_pool(5000, 16 * 1024);
-    info.scheduler.set_profile_functions(profile_functions);
+   // info.scheduler.set_profile_functions(profile_functions);
     info.scheduler.set_debug_output([](jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
     {
         printf("%s", message);

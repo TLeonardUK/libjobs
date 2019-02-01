@@ -146,7 +146,7 @@ public:
 private:
 
     /** @todo */
-    void notify_value_changed(size_t new_value);
+    void notify_value_changed(size_t new_value, bool lock_required = true);
 
     /** @todo */
     void add_to_wait_list(internal::job_definition* job_def);
@@ -155,7 +155,7 @@ private:
     void remove_from_wait_list(internal::job_definition* job_def);
 
     /** @todo */
-    bool try_remove_value(size_t value);
+    bool try_remove_value(size_t value, bool lock_required = true);
 
     /** Pointer to the owning scheduler of this handle. */
     scheduler* m_scheduler = nullptr;

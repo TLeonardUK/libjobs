@@ -43,41 +43,11 @@ manual-reset:
 
 #include "jobs_enums.h"
 #include "jobs_utils.h"
+#include "jobs_counter.h"
 
 #include <atomic>
 
 namespace jobs {
-    
-namespace internal {
-    
-/**
- * Encapsulates all the settings required to manage an event. This is used 
- * for internal storage, and shouldn't ever need to be touched by outside code.
- */
-class event_definition
-{
-public:
-
-    /** @todo */
-    event_definition();
-
-    /** @todo */
-    void reset();
-
-public:	
-
-    /** @todo */
-    std::atomic<size_t> ref_count;
-
-    /** @todo */
-    std::atomic<bool> signalled;
-
-    /** @todo */
-    bool auto_reset;
-
-};
-
-}; /* namespace internal */
 
 /**
  * \brief Represents an instance of an event that has been created by the scheduler.
@@ -101,13 +71,7 @@ protected:
     friend class scheduler;
 
     /** @todo */
-    event_handle(scheduler* scheduler, size_t index);
-
-    /** @todo */
-    void increase_ref();
-
-    /** @todo */
-    void decrease_ref();
+    event_handle(scheduler* scheduler, const counter_handle& counter, bool auto_reset);
 
 public:
 
@@ -133,9 +97,6 @@ public:
     result reset();
 
     /** @todo */
-    bool is_signalled();
-
-    /** @todo */
     bool operator==(const event_handle& rhs) const;
 
     /** @todo */
@@ -143,14 +104,14 @@ public:
 
 private:
 
-    /** @todo */
-    bool consume_signal();
-
     /** Pointer to the owning scheduler of this handle. */
     scheduler* m_scheduler = nullptr;
 
     /** @todo */
-    size_t m_index = 0;
+    counter_handle m_counter;
+
+    /** @todo */
+    bool m_auto_reset = false;
 
 };
 

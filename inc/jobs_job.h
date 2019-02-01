@@ -97,7 +97,7 @@ protected:
 
     /** @todo */
     job_definition* job_def = nullptr;
-
+    
 public:
 
     /** @todo */
@@ -129,7 +129,6 @@ enum class job_status
     pending,                            /**< Job is pending execution */
     running,                            /**< Job is running on a worker */
     sleeping,                           /**< Job is sleeping. */
-    waiting_on_event,                   /**< Job is waiting for an event to signal. */
     waiting_on_counter,                 /**< Job is waiting for a counter. */
     waiting_on_job,                     /**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
     completed,                          /**< Job has completed running */
@@ -247,12 +246,15 @@ class job_definition
 public:
 
     /** @todo */
-    job_definition();
+    job_definition(size_t index);
 
     /** @todo */
     void reset();
 
 public:    
+
+    /** @todo */
+    size_t index;
 
     /** @todo */
     std::atomic<size_t> ref_count;
@@ -276,9 +278,6 @@ public:
     counter_handle wait_counter;
 
     /** @todo */
-    bool wait_counter_signal;
-
-    /** @todo */
     size_t wait_counter_value;
 
     /** @todo */
@@ -292,6 +291,15 @@ public:
 
     /** @todo */
     job_handle wait_job;
+
+    /** @todo */
+    std::mutex wait_list_mutex;
+
+    /** @todo */
+    internal::job_definition* wait_list_head;
+
+    /** @todo */
+    internal::job_definition* wait_list_next;
 
     // Note: dependencies are only safe to modify in two situations:
     //            - when job is not running and is mutable

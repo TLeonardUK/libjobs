@@ -49,8 +49,8 @@ void main()
     // that can have a non-infinite timeout value registered at a given time.
     scheduler.set_max_callbacks(100);
 
-    // Sets the maximum number of events that can exist at a given time. Events are described below.
-    scheduler.set_max_events(10);
+    // Sets the maximum number of counters/events that can exist at a given time. Events are described below.
+    scheduler.set_max_counters(10);
 
     // To make the effects of running latent actions obvious, we will be running this example
     // only on a single thread, no multi-threading will occur.

@@ -37,6 +37,35 @@
 namespace jobs {
 namespace internal {
 
+/** @todo */
+template <typename mutex_type>
+struct optional_lock
+{
+public:
+    optional_lock(mutex_type& mutex, bool should_lock)
+        : m_mutex(mutex)
+        , m_locked(should_lock)
+    {
+        if (m_locked)
+        {
+            m_mutex.lock();
+        }
+    }
+
+    ~optional_lock()
+    {
+        if (m_locked)
+        {
+            m_mutex.unlock();
+        }
+    }
+
+private:
+    mutex_type& m_mutex;
+    bool m_locked;
+
+};
+
 /**
  *  \brief Utility class used to time the duration between two points in code.
  */
@@ -196,6 +225,148 @@ private:
     size_t m_capacity;
 
 };
+
+
+/**
+ *  \brief Holds a fixed number of objects which can be allocated and freed.
+ *
+ *  Operations on this class are thread-safe.
+ *
+ *	\tparam data_type The type of object held in the pool. 
+ */
+template <typename data_type>
+struct fixed_pool
+{
+public:
+
+    /**
+     *  \brief User-defined function used to initialize elements in a fixed_pool.
+     *
+     *  \param ptr Pointer to element to initialize.
+     *  \param index Index of element inside pool.
+     *
+     *  \return Result of initialization, initialization will abort on first failed element.
+     */
+    typedef std::function<result(data_type* ptr, size_t index)> init_function;
+
+public:
+
+    /**
+     * Constructor.
+     *
+     * \param memory_function User defined memory allocation overrides.
+     */
+    fixed_pool()
+    {
+    }
+
+    /** Destructor. */
+    ~fixed_pool()
+    {
+        if (m_objects != nullptr)
+        {
+            for (int i = 0; i < m_capacity; i++)
+            {
+                m_objects[i].~data_type();
+            }
+            m_memory_functions.user_free(m_objects);
+            m_objects = nullptr;
+        }
+    }
+
+    /** @todo */
+    result init(const memory_functions& memory_functions, size_t capacity, const init_function& init_function)
+    {
+        m_memory_functions = memory_functions;
+        m_capacity = capacity;
+
+        // Alloc the object list.
+        m_objects = static_cast<data_type*>(m_memory_functions.user_alloc(sizeof(data_type) * capacity));
+        if (m_objects == nullptr)
+        {
+            return result::out_of_memory;
+        }
+
+        // Initialize allocated objects.
+        for (int i = 0; i < capacity; i++)
+        {
+            result res = init_function(m_objects + i, i);
+            if (res != result::success)
+            {
+                return res;
+            }
+        }
+
+        // Alloc and fill the free object list.
+        result res = m_free_queue.init(memory_functions, capacity);
+        if (res != result::success)
+        {
+            return res;
+        }
+
+        for (int i = 0; i < capacity; i++)
+        {
+            m_free_queue.push(i);
+        }
+
+        return result::success;
+    }
+
+    /** @todo */
+    result alloc(size_t& output)
+    {
+        return m_free_queue.pop(output);
+    }
+
+    /** @todo */
+    result free(data_type* object)
+    {
+        size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
+        return m_free_queue.push(index);
+    }
+
+    /** @todo */
+    result free(size_t index)
+    {
+        return m_free_queue.push(index);
+    }
+
+    /** @todo */
+    data_type* get_index(size_t index)
+    {
+        return &m_objects[index];
+    }
+
+    /** @todo */
+    size_t count()
+    {
+        return m_capacity - m_free_queue.count();
+    }
+
+    /** @todo */
+    size_t capacity()
+    {
+        return m_capacity;
+    }
+
+private:
+
+    /** @todo */
+    std::mutex m_access_mutex;
+
+    /** @todo */
+    memory_functions m_memory_functions;
+
+    /** @todo */
+    data_type* m_objects = nullptr;
+
+    /** @todo */
+    size_t m_capacity = 0;
+
+    /** @todo */
+    atomic_queue<size_t> m_free_queue;
+};
+
 
 }; /* namespace internal */
 

@@ -69,7 +69,10 @@ result thread::init(const thread_entry_point& entry_point, const char* name)
 
 void thread::join()
 {
-    m_thread.join();
+    if (m_thread.joinable())
+    {
+        m_thread.join();
+    }
 }
 
 }; /* namespace internal */

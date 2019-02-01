@@ -95,6 +95,8 @@ void counter_handle::decrease_ref()
 
 result counter_handle::wait_for(size_t value, timeout in_timeout)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::wait_for");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     // Grab the current job context.
@@ -123,7 +125,6 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
                 context->job_def->status = internal::job_status::waiting_on_counter;
                 context->job_def->wait_counter = *this;
                 context->job_def->wait_counter_value = value;
-                context->job_def->wait_counter_signal = false;
                 context->job_def->wait_counter_at_least_value = false;
                 add_to_wait_list(context->job_def);
             }
@@ -140,6 +141,7 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
                     if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
                     {
                         timeout_called = true;
+                        m_scheduler->requeue_job(context->job_def->index);
                         m_scheduler->notify_job_available();
                     }
 
@@ -154,6 +156,9 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
                     return res;
                 }
             }
+
+            // Supress requeueing the job, we will do this when the callback returns.
+            m_scheduler->m_worker_job_supress_requeue = true;
 
             // Switch back to worker which will requeue fiber for execution later.			
             m_scheduler->switch_context(*worker_context);
@@ -220,6 +225,8 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
 
 result counter_handle::add(size_t value)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::add");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     size_t changed_value = 0;
@@ -239,6 +246,8 @@ result counter_handle::add(size_t value)
 
 result counter_handle::remove(size_t value, timeout in_timeout)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::remove");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     // Grab the current job context.
@@ -259,7 +268,8 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                 std::unique_lock<std::mutex> lock(def.value_mutex);
 
                 // Try and consume value.
-                if (try_remove_value(value))
+                // this is problematic since we already have a lock above.
+                if (try_remove_value(value, false))
                 {
                     break;
                 }
@@ -267,7 +277,6 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                 context->job_def->status = internal::job_status::waiting_on_counter;
                 context->job_def->wait_counter = *this;
                 context->job_def->wait_counter_value = value;
-                context->job_def->wait_counter_signal = false;
                 context->job_def->wait_counter_at_least_value = true;
                 add_to_wait_list(context->job_def);
             }
@@ -284,6 +293,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                     if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
                     {
                         timeout_called = true;
+                        m_scheduler->requeue_job(context->job_def->index);
                         m_scheduler->notify_job_available();
                     }
 
@@ -297,6 +307,9 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                     return res;
                 }
             }
+
+            // Supress requeueing the job, we will do this when the callback returns.
+            m_scheduler->m_worker_job_supress_requeue = true;
 
             // Switch back to worker which will requeue fiber for execution later.			
             m_scheduler->switch_context(*worker_context);
@@ -381,14 +394,16 @@ result counter_handle::remove(size_t value, timeout in_timeout)
     return result::success;
 }
 
-bool counter_handle::try_remove_value(size_t value)
+bool counter_handle::try_remove_value(size_t value, bool lock_required)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::try_remove_value");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     size_t changed_value = 0;
 
     {
-        std::unique_lock<std::mutex> lock(def.value_mutex);
+        internal::optional_lock<std::mutex> lock(def.value_mutex, lock_required);
 
         if (def.value >= value)
         {
@@ -403,13 +418,15 @@ bool counter_handle::try_remove_value(size_t value)
         }
     }
 
-    notify_value_changed(changed_value);
+    notify_value_changed(changed_value, lock_required);
 
     return true;
 }
 
 result counter_handle::get(size_t& output)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::get");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     output = def.value;
@@ -419,6 +436,8 @@ result counter_handle::get(size_t& output)
 
 result counter_handle::set(size_t value)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::set");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     {
@@ -434,6 +453,8 @@ result counter_handle::set(size_t value)
 
 void counter_handle::add_to_wait_list(internal::job_definition* job_def)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::add_to_wait_list");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     // Note: We don't lock as the only places this should be called from are places where a lock
@@ -452,6 +473,8 @@ void counter_handle::add_to_wait_list(internal::job_definition* job_def)
 
 void counter_handle::remove_from_wait_list(internal::job_definition* job_def)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::remove_from_wait_list");
+
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     // Note: We don't lock as the only places this should be called from are places where a lock
@@ -472,8 +495,10 @@ void counter_handle::remove_from_wait_list(internal::job_definition* job_def)
     }
 }
 
-void counter_handle::notify_value_changed(size_t new_value)
+void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
 {
+    profile_scope scope(profile_scope_type::fiber, "counter::notify_value_changed");
+
     //printf("notify_value_changed: %zi\n", new_value);
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
@@ -482,33 +507,33 @@ void counter_handle::notify_value_changed(size_t new_value)
     size_t signalled_job_count = 0;
 
     {
-        std::unique_lock<std::mutex> lock(def.value_mutex);
+        internal::optional_lock<std::mutex> lock(def.value_mutex, lock_required);
 
         internal::job_definition* job_def = def.wait_list_head;
         while (job_def != nullptr)
         {
+            bool signal = false;
+
             if (job_def->wait_counter_at_least_value)
             {
-                if (new_value >= job_def->wait_counter_value)
-                {
-                    job_def->wait_counter_signal = true;
-                }
+                signal = (new_value >= job_def->wait_counter_value);
             }
             else
             {
-                if (new_value == job_def->wait_counter_value)
+                signal = (new_value == job_def->wait_counter_value);
+            }
+
+            if (signal)
+            {
+                internal::job_status expected = internal::job_status::waiting_on_counter;
+                if (job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
                 {
-                    job_def->wait_counter_signal = true;
+                    m_scheduler->requeue_job(job_def->index);
+                    signalled_job_count++;
                 }
             }
             
             internal::job_definition* next_job = job_def->wait_counter_list_next;
-
-            if (job_def->wait_counter_signal)
-            {
-                signalled_job_count++;
-            }
-
             job_def = next_job;
         }
     }

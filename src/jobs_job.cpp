@@ -49,6 +49,11 @@ void job_context::reset()
 
 result job_context::enter_scope(profile_scope_type type, const char* tag, ...)
 {
+    if (scheduler->m_profile_functions.leave_scope == nullptr)
+    {
+        return result::success;
+    }
+
     profile_scope_definition* scope = nullptr;
     result res = scheduler->alloc_scope(scope);
     if (res != result::success)
@@ -84,19 +89,28 @@ result job_context::enter_scope(profile_scope_type type, const char* tag, ...)
 
     profile_scope_depth++;
 
-    if (scheduler->m_profile_functions.enter_scope != nullptr)
-    {
-        scheduler->m_profile_functions.enter_scope(scope->type, scope->tag);
-    }
+    assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
+    assert(profile_stack_head != nullptr || profile_scope_depth == 0);
 
-    //printf("[enter_scope:%i] %s\n", profile_scope_depth, scope->tag);
+    scheduler->m_profile_functions.enter_scope(scope->type, scope->tag);
+
+    //printf("[enter_scope:%zi,%p] prev=%p %s\n", profile_scope_depth, scope, profile_stack_tail->prev, scope->tag);
 
     return result::success;
 }
 
 result job_context::leave_scope()
 {
+    if (scheduler->m_profile_functions.leave_scope == nullptr)
+    {
+        return result::success;
+    }
+
     assert(profile_stack_tail != nullptr);
+
+    profile_scope_definition* original = profile_stack_tail;
+
+    //printf("[leave_scope:%zi,%p] prev=%p %s\n", profile_scope_depth - 1, original, profile_stack_tail->prev, original->tag);
 
     if (profile_stack_tail->prev != nullptr)
     {
@@ -107,24 +121,21 @@ result job_context::leave_scope()
         profile_stack_head = nullptr;
     }	
 
-    profile_scope_definition* original = profile_stack_tail;	
-
-    //printf("[leave_scope:%o] %s\n", profile_scope_depth - 1, original->tag);
-
     profile_stack_tail = profile_stack_tail->prev;
-
     profile_scope_depth--;
 
-    if (scheduler->m_profile_functions.leave_scope != nullptr)
-    {
-        scheduler->m_profile_functions.leave_scope();
-    }
+    assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
+    assert(profile_stack_head != nullptr || profile_scope_depth == 0);
+
+    scheduler->m_profile_functions.leave_scope();
 
     return scheduler->free_scope(original);
 }
 
-job_definition::job_definition()
+job_definition::job_definition(size_t in_index)
 {
+    index = in_index;
+
     reset();
 }	
 
@@ -141,6 +152,12 @@ void job_definition::reset()
     wait_counter = counter_handle();
     wait_event = event_handle();
     wait_job = job_handle();
+
+    wait_counter_list_prev = nullptr;
+    wait_counter_list_next = nullptr;
+
+    wait_list_head = nullptr;
+    wait_list_next = nullptr;
 
     context.reset();
 

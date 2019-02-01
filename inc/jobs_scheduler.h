@@ -52,7 +52,6 @@ class job_dependency;
 class job_context;
 class thread;
 class fiber;
-class event_definition;
 class counter_definition;
 
 }; /* namespace internal */
@@ -172,19 +171,9 @@ public:
     result set_max_profile_scopes(size_t max_dependencies);
 
     /**
-     * \brief Sets the maximum number of events that can be created and used for syncronization.
-     *
-     * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
-     *
-     * \param max_events New maximum number of events.
-     *
-     * \return Value indicating the success of this function.
-     */
-    result set_max_events(size_t max_events);
-
-    /**
      * \brief Sets the maximum number of counters that can be created and used for syncronization.
      *
+     * This capacity is used for both raw counters and events.
      * This has a direct effect on the quantity of memory allocated by the scheduler when initialized.
      *
      * \param max_counters New maximum number of counters.
@@ -358,13 +347,6 @@ private:
         internal::atomic_queue<size_t> pending_job_indicies;
     };
 
-    /** Local resources */
-    struct thread_local_resources
-    {
-        /** Pool of profile scopes to be allocated. */
-        internal::fixed_pool<internal::profile_scope_definition> profile_scope_pool;
-    };
-
 protected:
 
     friend class job_handle;
@@ -432,18 +414,6 @@ protected:
 
     /** @todo */
     result free_scope(internal::profile_scope_definition* scope);
-
-    /** @todo */
-    internal::event_definition& get_event_definition(size_t index);
-
-    /** @todo */
-    void free_event(size_t index);
-
-    /** @todo */
-    void increase_event_ref_count(size_t index);
-
-    /** @todo */
-    void decrease_event_ref_count(size_t index);
 
     /** @todo */
     internal::counter_definition& get_counter_definition(size_t index);
@@ -582,12 +552,6 @@ private:
     /** Maximum number of profile scopes we can have. */
     size_t m_max_profile_scopes = 1000;
 
-    /** Maximum number of events we can have. */
-    size_t m_max_events = 100;
-
-    /** Pool of events that can be allocated. */
-    internal::fixed_pool<internal::event_definition> m_event_pool;
-
     /** Maximum number of counters we can have. */
     size_t m_max_counters = 100;
 
@@ -600,23 +564,17 @@ private:
     /** Instance responsable for queueing and calling latent callbacks. */
     internal::callback_scheduler m_callback_scheduler;
 
-    /** Thread local resources */
-    thread_local_resources* m_thread_local_resources;
-
-    /** Counter to allocate unique thread indices */
-    std::atomic<int32_t> m_thread_index_counter = 1; // starts at one as 0 is taken by untracked threads (user threads).
-
-    /** Total number of tracked threads. */
-    size_t m_thread_count = 0;
-
-    /** Thread local storage for unique worker index, used to access pre-allocated thread-specific resources. */
-    static thread_local int32_t m_thread_index;
+    /** Profiling values */
+    internal::fixed_pool<internal::profile_scope_definition> m_profile_scope_pool;
 
     /** Thread local storage for a worker threads current job. */
     static thread_local size_t m_worker_job_index;
 
     /** Thread local storage for flagging of job completed. */
     static thread_local bool m_worker_job_completed;
+
+    /** Thread local storage for flagging if a job should not be requeued if it returns without completing (if it will be requeued elsewhere). */
+    static thread_local bool m_worker_job_supress_requeue;
 
     /** Thread local storage for the workers job context. */
     static thread_local internal::job_context m_worker_job_context;
