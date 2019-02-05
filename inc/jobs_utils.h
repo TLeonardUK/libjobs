@@ -31,6 +31,8 @@
 #include <stdint.h>
 #include <chrono>
 #include <atomic>
+#include <shared_mutex>
+#include <cassert>
 
 #include "jobs_memory.h"
 
@@ -57,6 +59,35 @@ public:
         if (m_locked)
         {
             m_mutex.unlock();
+        }
+    }
+
+private:
+    mutex_type& m_mutex;
+    bool m_locked;
+
+};
+
+/** @todo */
+template <typename mutex_type>
+struct optional_shared_lock
+{
+public:
+    optional_shared_lock(mutex_type& mutex, bool should_lock)
+        : m_mutex(mutex)
+        , m_locked(should_lock)
+    {
+        if (m_locked)
+        {
+            m_mutex.lock_shared();
+        }
+    }
+
+    ~optional_shared_lock()
+    {
+        if (m_locked)
+        {
+            m_mutex.unlock_shared();
         }
     }
 
@@ -100,6 +131,202 @@ private:
 
 /** @todo */
 template <typename data_type>
+struct multiple_writer_single_reader_list
+{
+public:
+
+    /** @todo */
+    struct link
+    {
+        /** @todo */
+        data_type value = nullptr;
+
+        /** @todo */
+        link* next = nullptr;
+
+        /** @todo */
+        link* prev = nullptr;
+    };
+
+    /** @todo */
+    struct iterator
+    {
+    public:
+
+        /** @todo */
+        iterator()
+        {
+        }
+
+        /** @todo */
+        ~iterator()
+        {
+            if (m_locked)
+            {
+                //printf("Unlocked\n");
+                m_owner->m_lock.unlock();
+                m_locked = false;
+            }
+        }
+
+        /** @todo */
+        data_type value()
+        {
+            return m_link->value;
+        }
+
+        /** @todo */
+        operator bool() const
+        {
+            return m_link != nullptr;
+        }
+
+        /** @todo */
+        iterator& operator++(int)
+        { 
+            next();
+            return *this;
+        }
+
+    private:
+
+        /** @todo */
+        bool start(multiple_writer_single_reader_list* owner, bool lock_required)
+        {
+            assert(m_locked == false);
+
+            m_owner = owner;
+            if (lock_required)
+            {
+                //printf("Locked\n");
+                m_owner->m_lock.lock();
+                m_locked = true;
+            }
+            m_link = m_owner->m_head.load();
+
+            return (m_link != nullptr);
+        }
+
+        /** @todo */
+        bool next()
+        {
+            m_link = m_link->next;
+            return (m_link != nullptr);
+        }
+
+    private:
+
+        friend struct multiple_writer_single_reader_list<data_type>;
+
+        /** @todo */
+        multiple_writer_single_reader_list* m_owner = nullptr;
+
+        /** @todo */
+        link* m_link = nullptr;
+
+        /** @todo */
+        bool m_locked = false;
+
+    };
+
+public:
+
+    /** @todo */
+    void add(link* value, bool lock_required = true)
+    {
+        optional_shared_lock<std::shared_mutex> lock(m_lock, lock_required);
+
+        while (true)
+        {
+            size_t old_change_index = m_change_index;
+            size_t new_change_index = old_change_index + 1;
+
+            if (m_uncommitted_change_index.compare_exchange_strong(old_change_index, new_change_index))
+            {
+                link* current_head = m_head.load();
+                if (current_head != nullptr)
+                {
+                    current_head->prev = value;
+                }
+                value->next = current_head;
+                value->prev = nullptr;
+                m_head = value;
+
+                m_change_index = m_uncommitted_change_index;
+                break;
+            }
+            else
+            {
+                _mm_pause();
+            }
+        }
+    }
+
+    /** @todo */
+    void remove(link* value, bool lock_required = true)
+    {
+        optional_shared_lock<std::shared_mutex> lock(m_lock, lock_required);
+
+        while (true)
+        {
+            size_t old_change_index = m_change_index;
+            size_t new_change_index = old_change_index + 1;
+
+            if (m_uncommitted_change_index.compare_exchange_strong(old_change_index, new_change_index))
+            {
+                if (value->next != nullptr)
+                {
+                    value->next->prev = value->prev;
+                }
+                if (value->prev != nullptr)
+                {
+                    value->prev->next = value->next;
+                }
+                if (value == m_head.load())
+                {
+                    m_head = value->next;
+                }
+
+                m_change_index = m_uncommitted_change_index;
+                break;
+            }
+            else
+            {
+                _mm_pause();
+            }
+        }
+    }
+
+    /** @todo */
+    bool iterate(iterator& iter, bool lock_required = true)
+    {        
+        return iter.start(this, lock_required);
+    }
+
+    /** @todo */
+    std::shared_mutex& get_mutex()
+    {
+        return m_lock;
+    }
+
+private:
+
+    /** @todo */
+    std::shared_mutex m_lock;
+
+    /** @todo */
+    std::atomic<link*> m_head = nullptr;
+
+    /** @todo */
+    std::atomic<size_t> m_uncommitted_change_index = 0;
+
+    /** @todo */
+    size_t m_change_index = 0;
+    
+};
+
+/** @todo */
+template <typename data_type>
 struct atomic_queue
 {
 public:
@@ -115,7 +342,7 @@ public:
     }
 
     /** @todo */
-    result init(const memory_functions& memory_functions, size_t capacity)
+    result init(const memory_functions& memory_functions, int64_t capacity)
     {
         // implemented as an atomic circular buffer.
         m_buffer = (data_type*)memory_functions.user_alloc(sizeof(data_type) * capacity);
@@ -132,17 +359,24 @@ public:
     }
 
     /** @todo */
-    result pop(data_type& result)
+    result pop(data_type& result, bool can_block = false)
     {
         while (true)
         {
-            size_t old_tail = m_tail;
-            size_t new_tail = old_tail + 1;
+            int64_t old_tail = m_tail;
+            int64_t new_tail = old_tail + 1;
 
-            size_t diff = (m_head - new_tail);
-            if (diff < 0 || diff > m_capacity)
+            int64_t diff = (m_head - new_tail);
+            if (diff < 0)
             {
-                return result::empty;
+                if (can_block)
+                {
+                    continue;
+                }
+                else
+                {
+                    return result::empty;
+                }
             }
 
             if (m_uncomitted_tail.compare_exchange_strong(old_tail, new_tail))
@@ -161,17 +395,24 @@ public:
     }
 
     /** @todo */
-    result push(data_type value)
+    result push(data_type value, bool can_block = true)
     {
         while (true)
         {
-            size_t old_head = m_head;
-            size_t new_head = old_head + 1;
+            int64_t old_head = m_head;
+            int64_t new_head = old_head + 1;
 
-            size_t diff = (new_head - m_tail);
-            if (diff < 0 || diff > m_capacity)
+            int64_t diff = (new_head - m_tail);
+            if (diff > m_capacity)
             {
-                continue;
+                if (can_block)
+                {
+                    continue;
+                }
+                else
+                {
+                    return result::maximum_exceeded;
+                }
             }
 
             if (m_uncomitted_head.compare_exchange_strong(old_head, new_head))
@@ -192,7 +433,7 @@ public:
     /** @todo */
     size_t count()
     {
-        return (m_head - m_tail);
+        return (size_t)(m_head - m_tail);
     }
 
     /** @todo */
@@ -210,22 +451,95 @@ private:
     memory_functions m_memory_functions;
 
     /** @todo */
-    size_t m_head;
+    int64_t m_head;
 
     /** @todo */
-    size_t m_tail;
+    int64_t m_tail;
 
     /** @todo */
-    std::atomic<size_t> m_uncomitted_head;
+    std::atomic<int64_t> m_uncomitted_head;
 
     /** @todo */
-    std::atomic<size_t> m_uncomitted_tail;
+    std::atomic<int64_t> m_uncomitted_tail;
 
     /** @todo */
-    size_t m_capacity;
+    int64_t m_capacity;
 
 };
 
+/** @todo */
+template <typename data_type, int capacity>
+struct fixed_queue
+{
+public:
+
+    /** @todo */
+    fixed_queue()
+    {
+        m_head = 0;
+        m_tail = 0;
+    }
+
+    /** @todo */
+    result pop(data_type& result)
+    {
+        int64_t old_tail = m_tail;
+        int64_t new_tail = m_tail + 1;
+
+        int64_t diff = (m_head - new_tail);
+        if (diff < 0)
+        {
+            return result::empty;
+        }
+
+        result = m_buffer[old_tail % capacity];
+        m_tail = new_tail;
+
+        return result::success;
+    }
+
+    /** @todo */
+    result push(data_type value)
+    {
+        int64_t old_head = m_head;
+        int64_t new_head = old_head + 1;
+
+        int64_t diff = (new_head - m_tail);
+        if (diff > capacity)
+        {
+            return result::maximum_exceeded;
+        }
+
+        m_buffer[old_head % capacity] = value;
+        m_head = new_head;
+
+        return result::success;
+    }
+
+    /** @todo */
+    size_t count()
+    {
+        return (size_t)(m_head - m_tail);
+    }
+
+    /** @todo */
+    bool is_empty()
+    {
+        return (m_head == m_tail);
+    }
+
+private:
+
+    /** @todo */
+    data_type m_buffer[capacity];
+
+    /** @todo */
+    int64_t m_head;
+
+    /** @todo */
+    int64_t m_tail;
+
+};
 
 /**
  *  \brief Holds a fixed number of objects which can be allocated and freed.
@@ -306,6 +620,7 @@ public:
 
         for (int i = 0; i < capacity; i++)
         {
+            m_free_count++;
             m_free_queue.push(i);
         }
 
@@ -315,13 +630,20 @@ public:
     /** @todo */
     result alloc(size_t& output)
     {
-        return m_free_queue.pop(output);
+        m_free_count--;
+        return m_free_queue.pop(output, true);
     }
 
     /** @todo */
     result free(data_type* object)
     {
         size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
+
+#if !defined(NDEBUG)
+        memset(m_objects + index, 0xAB, sizeof(data_type));
+#endif
+
+        m_free_count++;
         return m_free_queue.push(index);
     }
 
@@ -365,6 +687,9 @@ private:
 
     /** @todo */
     atomic_queue<size_t> m_free_queue;
+
+    /** @todo */
+    std::atomic<size_t> m_free_count = 0;
 };
 
 

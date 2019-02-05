@@ -581,6 +581,9 @@ private:
 
     /** Thread local storage for the workers active job context. */
     static thread_local internal::job_context* m_worker_active_job_context;
+
+    /** Thread local cache for allocating profile scopes speedily. */
+    static thread_local internal::fixed_queue<internal::profile_scope_definition*, 32> m_profile_scope_thread_local_cache;
 };
 
 }; /* namespace jobs */

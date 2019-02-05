@@ -36,6 +36,7 @@ thread_local bool scheduler::m_worker_job_completed = false;
 thread_local bool scheduler::m_worker_job_supress_requeue = false;
 thread_local internal::job_context scheduler::m_worker_job_context;
 thread_local internal::job_context* scheduler::m_worker_active_job_context = nullptr;
+thread_local internal::fixed_queue<internal::profile_scope_definition*, 32> scheduler::m_profile_scope_thread_local_cache;
 
 scheduler::scheduler()
 {
@@ -290,7 +291,7 @@ result scheduler::init()
     }
 
     // Allocate profile scopes.
-    result = m_profile_scope_pool.init(m_memory_functions, m_max_counters, [](internal::profile_scope_definition* instance, size_t index)
+    result = m_profile_scope_pool.init(m_memory_functions, m_max_profile_scopes, [](internal::profile_scope_definition* instance, size_t index)
     {
         new(instance) internal::profile_scope_definition();
         return result::success;
@@ -530,7 +531,7 @@ void scheduler::enter_context(internal::job_context& context)
     // Recreate the profile scope stack.
     if (m_profile_functions.enter_scope != nullptr)
     {
-        printf("[enter_context] entering %i\n", context.profile_scope_depth);
+        //printf("[enter_context] entering %i\n", context.profile_scope_depth);
         internal::profile_scope_definition* scope = context.profile_stack_head;
         while (scope != nullptr)
         {
@@ -695,7 +696,7 @@ void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const
 
     write_log(debug_log_verbosity::verbose, debug_log_group::worker, "worker started, pool=%zi worker=%zi priorities=0x%08x", pool_index, worker_index, thread_pool.job_priorities);
 
-    m_worker_active_job_context->enter_scope(profile_scope_type::worker, "Worker (pool=%zi, index=%zi)", pool_index, worker_index);
+    m_worker_active_job_context->enter_scope(profile_scope_type::worker, "Worker (pool=%zi, index=%zi)", false, pool_index, worker_index);
 
     while (!m_destroying)
     {
@@ -720,7 +721,7 @@ void scheduler::worker_fiber_entry_point(size_t pool_index, size_t worker_index)
         // Execute the job assigned to this thread.
         write_log(debug_log_verbosity::verbose, debug_log_group::job, "executing job, index=%zi", m_worker_job_index);
 
-        m_worker_active_job_context->enter_scope(profile_scope_type::fiber, "%s", def.tag);
+        m_worker_active_job_context->enter_scope(profile_scope_type::fiber, def.tag, true);
 
         def.work();
         m_worker_job_completed = true;
@@ -906,18 +907,17 @@ void scheduler::complete_job(size_t job_index)
 
     // For each job waiting on this one, set it back to pending and requeue it.
     {
-        std::unique_lock<std::mutex> lock(def.wait_list_mutex);
-
-        internal::job_definition* wait_def = def.wait_list_head;
-        while (wait_def != nullptr)
+        internal::multiple_writer_single_reader_list<internal::job_definition*>::iterator iter;
+        for (def.wait_list.iterate(iter); iter; iter++)
         {
+            internal::job_definition* wait_def = iter.value();
+
             internal::job_status expected = internal::job_status::waiting_on_job;
             if (wait_def->status.compare_exchange_strong(expected, internal::job_status::pending))
             {
                 requeue_job(wait_def->index);
             }
-            wait_def = wait_def->wait_list_next;
-        }
+        }        
     }
 
     // For each successor, reduce its pending predecessor count.
@@ -1119,6 +1119,8 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
 
 result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//, priority assist_on_tasks)
 {
+    profile_scope scope(profile_scope_type::worker, "scheduler::wait_for_job");
+
     // @todo if we are already signaled and not auto-reset, just return.
     internal::job_context* context = get_active_job_context();
     internal::job_context* worker_context = get_worker_job_context();
@@ -1165,7 +1167,7 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
         {
             internal::job_definition& other_job_def = get_job_definition(job_handle_in.m_index);
 
-            std::unique_lock<std::mutex> lock(other_job_def.wait_list_mutex);
+            std::shared_lock<std::shared_mutex> lock(other_job_def.wait_list.get_mutex());
 
             // Check it hasn't completed while acquiring lock.
             if (other_job_def.status == internal::job_status::completed)
@@ -1175,8 +1177,8 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
             }
             else
             {
-                context->job_def->wait_list_next = other_job_def.wait_list_head;
-                other_job_def.wait_list_head = context->job_def;
+                context->job_def->wait_list_link.value = context->job_def;
+                other_job_def.wait_list.add(&context->job_def->wait_list_link, false);
             }
         }
 
@@ -1259,8 +1261,16 @@ bool scheduler::is_idle() const
 
 result scheduler::alloc_scope(internal::profile_scope_definition*& output)
 {
+    // We maintain a small thread-local list for speedy allocations.
+    result res = m_profile_scope_thread_local_cache.pop(output);
+    if (res == result::success)
+    {
+        return res;
+    }
+
+    // Otherwise fall back to the main synchronized pool.
     size_t index = 0;
-    result res = m_profile_scope_pool.alloc(index);
+    res = m_profile_scope_pool.alloc(index);
     if (res != result::success)
     {
         return res;
@@ -1272,6 +1282,14 @@ result scheduler::alloc_scope(internal::profile_scope_definition*& output)
 
 result scheduler::free_scope(internal::profile_scope_definition* scope)
 {
+    // Free to the small thread-local list for speedy allocations
+    result res = m_profile_scope_thread_local_cache.push(scope);
+    if (res == result::success)
+    {
+        return res;
+    }
+
+    // Return to main synchronized pool.
     return m_profile_scope_pool.free(scope);
 }
 

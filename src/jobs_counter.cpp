@@ -21,6 +21,7 @@
 
 #include "jobs_counter.h"
 #include "jobs_scheduler.h"
+#include "jobs_utils.h"
 
 #include <cassert>
 
@@ -36,7 +37,6 @@ void counter_definition::reset()
 {
     ref_count = 0;	
     value = 0;
-    wait_list_head = nullptr;
 }
 
 }; /* namespace internal */
@@ -114,7 +114,9 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
 
             // Put job to sleep.
             {
-                std::unique_lock<std::mutex> lock(def.value_mutex);
+                profile_scope scope(profile_scope_type::fiber, "put to sleep");
+
+                std::shared_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
 
                 // Try and consume value.
                 if (def.value == value)
@@ -189,7 +191,9 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
         internal::stopwatch timer;
         timer.start();
 
-        std::unique_lock<std::mutex> lock(def.value_mutex);
+        std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+
+        printf("Waiting on value %zi\n", value);
 
         // Keep looping until we manage to decrease the value.
         while (true)
@@ -232,7 +236,9 @@ result counter_handle::add(size_t value)
     size_t changed_value = 0;
 
     {
-        std::unique_lock<std::mutex> lock(def.value_mutex);
+        profile_scope scope(profile_scope_type::fiber, "lock & increment");
+
+        std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
         def.value += value;
         changed_value = def.value;
 
@@ -265,11 +271,13 @@ result counter_handle::remove(size_t value, timeout in_timeout)
 
             // Put job to sleep.
             {
-                std::unique_lock<std::mutex> lock(def.value_mutex);
+                profile_scope scope(profile_scope_type::fiber, "put to sleep");
+
+                std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
 
                 // Try and consume value.
                 // this is problematic since we already have a lock above.
-                if (try_remove_value(value, false))
+                if (try_remove_value(value))
                 {
                     break;
                 }
@@ -331,9 +339,13 @@ result counter_handle::remove(size_t value, timeout in_timeout)
             }
 
             // Try and consume value.
-            if (!try_remove_value(value))
             {
-                continue;
+                std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+
+                if (!try_remove_value(value))
+                {
+                    continue;
+                }
             }
 
             return result::success;
@@ -348,10 +360,10 @@ result counter_handle::remove(size_t value, timeout in_timeout)
 
         size_t changed_value = 0;
 
-       // printf("Waiting on value %zi\n", value);
+       // printf("Waiting on remove %zi\n", value);
 
         {
-            std::unique_lock<std::mutex> lock(def.value_mutex);
+            std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
 
             // Keep looping until we manage to decrease the value.
             while (true)
@@ -394,7 +406,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
     return result::success;
 }
 
-bool counter_handle::try_remove_value(size_t value, bool lock_required)
+bool counter_handle::try_remove_value(size_t value)
 {
     profile_scope scope(profile_scope_type::fiber, "counter::try_remove_value");
 
@@ -402,23 +414,19 @@ bool counter_handle::try_remove_value(size_t value, bool lock_required)
 
     size_t changed_value = 0;
 
+    if (def.value >= value)
     {
-        internal::optional_lock<std::mutex> lock(def.value_mutex, lock_required);
+        def.value -= value;
+        changed_value = def.value;
 
-        if (def.value >= value)
-        {
-            def.value -= value;
-            changed_value = def.value;
-
-            def.value_cvar.notify_all();
-        }
-        else
-        {
-            return false;
-        }
+        def.value_cvar.notify_all();
+    }
+    else
+    {
+        return false;
     }
 
-    notify_value_changed(changed_value, lock_required);
+    notify_value_changed(changed_value, false);
 
     return true;
 }
@@ -441,7 +449,7 @@ result counter_handle::set(size_t value)
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     {
-        std::unique_lock<std::mutex> lock(def.value_mutex);
+        std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
         def.value = value;
         def.value_cvar.notify_all();
     }
@@ -456,19 +464,11 @@ void counter_handle::add_to_wait_list(internal::job_definition* job_def)
     profile_scope scope(profile_scope_type::fiber, "counter::add_to_wait_list");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
-
-    // Note: We don't lock as the only places this should be called from are places where a lock
-    // has already been acquired.
-   // std::unique_lock<std::mutex> lock(def.value_mutex);
-
-    // Add to head
-    if (def.wait_list_head != nullptr)
-    {
-        def.wait_list_head->wait_counter_list_prev = job_def;
-    }
-    job_def->wait_counter_list_next = def.wait_list_head;
-    job_def->wait_counter_list_prev = nullptr;
-    def.wait_list_head = job_def;
+    
+    // Add to list.    
+    //printf("added: %p\n", job_def);
+    job_def->wait_counter_list_link.value = job_def;
+    def.wait_list.add(&job_def->wait_counter_list_link, false);
 }
 
 void counter_handle::remove_from_wait_list(internal::job_definition* job_def)
@@ -477,22 +477,9 @@ void counter_handle::remove_from_wait_list(internal::job_definition* job_def)
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
-    // Note: We don't lock as the only places this should be called from are places where a lock
-    // has already been acquired.
-    std::unique_lock<std::mutex> lock(def.value_mutex);
+    //printf("removed: %p\n", job_def);
 
-    if (job_def->wait_counter_list_prev != nullptr)
-    {
-        job_def->wait_counter_list_prev->wait_counter_list_next = job_def->wait_counter_list_next;
-    }
-    if (job_def->wait_counter_list_next != nullptr)
-    {
-        job_def->wait_counter_list_next->wait_counter_list_prev = job_def->wait_counter_list_prev;
-    }
-    if (job_def == def.wait_list_head)
-    {
-        def.wait_list_head = job_def->wait_counter_list_next;
-    }
+    def.wait_list.remove(&job_def->wait_counter_list_link);
 }
 
 void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
@@ -507,12 +494,12 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
     size_t signalled_job_count = 0;
 
     {
-        internal::optional_lock<std::mutex> lock(def.value_mutex, lock_required);
-
-        internal::job_definition* job_def = def.wait_list_head;
-        while (job_def != nullptr)
+        internal::multiple_writer_single_reader_list<internal::job_definition*>::iterator iter;
+        for (def.wait_list.iterate(iter, lock_required); iter; iter++)
         {
             bool signal = false;
+
+            internal::job_definition* job_def = iter.value();
 
             if (job_def->wait_counter_at_least_value)
             {
@@ -525,6 +512,8 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
 
             if (signal)
             {
+                //printf("woke up: %p\n", job_def);
+
                 internal::job_status expected = internal::job_status::waiting_on_counter;
                 if (job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
                 {
@@ -532,9 +521,6 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
                     signalled_job_count++;
                 }
             }
-            
-            internal::job_definition* next_job = job_def->wait_counter_list_next;
-            job_def = next_job;
         }
     }
 

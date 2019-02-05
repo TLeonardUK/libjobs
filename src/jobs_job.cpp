@@ -47,7 +47,7 @@ void job_context::reset()
     assert(has_fiber == false);
 }
 
-result job_context::enter_scope(profile_scope_type type, const char* tag, ...)
+result job_context::enter_scope(profile_scope_type type, const char* tag, bool unformatted, ...)
 {
     if (scheduler->m_profile_functions.leave_scope == nullptr)
     {
@@ -58,19 +58,49 @@ result job_context::enter_scope(profile_scope_type type, const char* tag, ...)
     result res = scheduler->alloc_scope(scope);
     if (res != result::success)
     {
+        scheduler->write_log(debug_log_verbosity::error, debug_log_group::memory, "Failed to allocate profiling marker. Profiling results may be unprdictable.");
         return res;
     }
 
-    va_list list;
-    va_start(list, tag);
+    if (unformatted)
+    {
+        for (size_t i = 0; ; i++)
+        {
+            char c = tag[i];
+            if (c == '\0' || i == profile_scope_definition::max_tag_length - 1)
+            {
+                scope->tag[i] = '\0';
+                break;
+            }
+            else
+            {
+                scope->tag[i] = c;
+            }
+        }
 
-    // @todo
-    // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
-    // we're just memsetting this here. Needs to be done correctly.
-    memset(scope->tag, 0, profile_scope_definition::max_tag_length); 
-    vsnprintf(scope->tag, profile_scope_definition::max_tag_length - 1, tag, list);
+/*        size_t len = strlen(tag);
+        if (len > profile_scope_definition::max_tag_length - 1)
+        {
+            len = profile_scope_definition::max_tag_length - 1;
+        }
 
-    va_end(list);
+        memcpy(scope->tag, tag, len);
+        scope->tag[len] = '\0';
+*/
+    }
+    else
+    {
+        va_list list;
+        va_start(list, unformatted);
+
+        // @todo
+        // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
+        // we're just memsetting this here. Needs to be done correctly.
+        memset(scope->tag, 0, profile_scope_definition::max_tag_length);
+        vsnprintf(scope->tag, profile_scope_definition::max_tag_length - 1, tag, list);
+
+        va_end(list);
+    }
 
     scope->type = type;
     scope->prev = profile_stack_tail;
@@ -89,12 +119,26 @@ result job_context::enter_scope(profile_scope_type type, const char* tag, ...)
 
     profile_scope_depth++;
 
-    assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
-    assert(profile_stack_head != nullptr || profile_scope_depth == 0);
-
     scheduler->m_profile_functions.enter_scope(scope->type, scope->tag);
 
-    //printf("[enter_scope:%zi,%p] prev=%p %s\n", profile_scope_depth, scope, profile_stack_tail->prev, scope->tag);
+    // Debugging code.
+    /*assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
+    assert(profile_stack_head != nullptr || profile_scope_depth == 0);
+    
+    profile_scope_definition* check_scope_tail = profile_stack_tail;
+    profile_scope_definition* check_scope_head = profile_stack_head;
+    for (int i = 0; i < profile_scope_depth; i++)
+    {
+        assert(check_scope_tail != nullptr);
+        assert(check_scope_head != nullptr);
+        check_scope_tail = check_scope_tail->prev;
+        check_scope_head = check_scope_head->next;
+    }
+
+    if (has_fiber && is_fiber_raw)
+    {
+        printf("[enter_scope:%zi,%zi,%p] prev=%p %s\n", std::this_thread::get_id(), profile_scope_depth, scope, profile_stack_tail->prev, scope->tag);
+    }*/
 
     return result::success;
 }
@@ -106,11 +150,19 @@ result job_context::leave_scope()
         return result::success;
     }
 
+    /*if (has_fiber && is_fiber_raw)
+    {
+        printf("[leave_scope:%zi,%zi,%p] prev=%p %s\n", std::this_thread::get_id(), profile_scope_depth - 1, profile_stack_tail, profile_stack_tail != nullptr ? profile_stack_tail->prev : 0, profile_stack_tail == nullptr ? "" : profile_stack_tail->tag);
+    }
+
+    std::string stag = profile_stack_tail->tag;
+    assert(stag.find("Worker") == std::string::npos);
+
+    assert(profile_scope_depth > 0);
     assert(profile_stack_tail != nullptr);
+    */
 
     profile_scope_definition* original = profile_stack_tail;
-
-    //printf("[leave_scope:%zi,%p] prev=%p %s\n", profile_scope_depth - 1, original, profile_stack_tail->prev, original->tag);
 
     if (profile_stack_tail->prev != nullptr)
     {
@@ -124,8 +176,8 @@ result job_context::leave_scope()
     profile_stack_tail = profile_stack_tail->prev;
     profile_scope_depth--;
 
-    assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
-    assert(profile_stack_head != nullptr || profile_scope_depth == 0);
+    //assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
+    //assert(profile_stack_head != nullptr || profile_scope_depth == 0);
 
     scheduler->m_profile_functions.leave_scope();
 
@@ -152,12 +204,6 @@ void job_definition::reset()
     wait_counter = counter_handle();
     wait_event = event_handle();
     wait_job = job_handle();
-
-    wait_counter_list_prev = nullptr;
-    wait_counter_list_next = nullptr;
-
-    wait_list_head = nullptr;
-    wait_list_next = nullptr;
 
     context.reset();
 
@@ -446,7 +492,7 @@ profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
 
     if (context != nullptr)
     {
-        context->enter_scope(type, tag);
+        context->enter_scope(type, tag, true);
     }
 
     m_context = context;

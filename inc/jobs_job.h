@@ -113,7 +113,7 @@ public:
     //result wait_for(job_event evt);
 
     /** @todo */
-    result enter_scope(profile_scope_type type, const char* tag, ...);
+    result enter_scope(profile_scope_type type, const char* tag, bool unformatted, ...);
 
     /** @todo */
     result leave_scope();
@@ -284,22 +284,16 @@ public:
     bool wait_counter_at_least_value;
 
     /** @todo */
-    internal::job_definition* wait_counter_list_prev;
-
-    /** @todo */
-    internal::job_definition* wait_counter_list_next;
+    multiple_writer_single_reader_list<internal::job_definition*>::link wait_counter_list_link;
 
     /** @todo */
     job_handle wait_job;
 
     /** @todo */
-    std::mutex wait_list_mutex;
+    multiple_writer_single_reader_list<internal::job_definition*>::link wait_list_link;
 
     /** @todo */
-    internal::job_definition* wait_list_head;
-
-    /** @todo */
-    internal::job_definition* wait_list_next;
+    multiple_writer_single_reader_list<internal::job_definition*> wait_list;
 
     // Note: dependencies are only safe to modify in two situations:
     //            - when job is not running and is mutable

@@ -64,13 +64,10 @@ public:
     std::atomic<size_t> value;
 
     /** @todo */
-    std::condition_variable value_cvar;
+    std::condition_variable_any value_cvar;
 
     /** @todo */
-    std::mutex value_mutex;
-
-    /** @todo */
-    internal::job_definition* wait_list_head;
+    multiple_writer_single_reader_list<internal::job_definition*> wait_list;
 
 };
 
@@ -155,7 +152,7 @@ private:
     void remove_from_wait_list(internal::job_definition* job_def);
 
     /** @todo */
-    bool try_remove_value(size_t value, bool lock_required = true);
+    bool try_remove_value(size_t value);
 
     /** Pointer to the owning scheduler of this handle. */
     scheduler* m_scheduler = nullptr;

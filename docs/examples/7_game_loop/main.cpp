@@ -132,7 +132,7 @@ private:
         {
             // Wait for the next frame to start processing.
             {
-                jobs::profile_scope(jobs::profile_scope_type::user_defined, "wait for frame");
+                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "wait for frame");
 
                 size_t frame = 0;
                 jobs::result result = m_last_tick_frame.get(frame);
@@ -143,14 +143,14 @@ private:
 
             // Perform any processing required.
             {
-                jobs::profile_scope(jobs::profile_scope_type::user_defined, "tick");
+                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "tick");
 
                 tick();
             }
 
             // Mark as complete for this frame.
             {
-                jobs::profile_scope(jobs::profile_scope_type::user_defined, "mark complete");
+                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "mark complete");
 
                 m_frame_info->frame_end_counter.add(1);
                 m_last_tick_frame.add(1);
@@ -242,6 +242,8 @@ private:
 
 };
 
+thread_local size_t g_profile_depth = 0;
+
 void main()
 {
     // The frame-info struct contains all our general information used for scheduling
@@ -280,13 +282,13 @@ void main()
 
     // Setup the job scheduler.
     info.scheduler.add_thread_pool(jobs::scheduler::get_logical_core_count(), jobs::priority::all);
-    info.scheduler.set_max_callbacks(5000);
-    info.scheduler.set_max_counters(5000);
-    info.scheduler.set_max_dependencies(5000);
-    info.scheduler.set_max_jobs(5000);
-    info.scheduler.set_max_profile_scopes(5000);
-    info.scheduler.add_fiber_pool(5000, 16 * 1024);
-   // info.scheduler.set_profile_functions(profile_functions);
+    info.scheduler.set_max_callbacks(50000);
+    info.scheduler.set_max_counters(12000);
+    info.scheduler.set_max_dependencies(50000);
+    info.scheduler.set_max_jobs(50000);
+    info.scheduler.set_max_profile_scopes(50000);
+    info.scheduler.add_fiber_pool(50000, 16 * 1024);
+    info.scheduler.set_profile_functions(profile_functions);
     info.scheduler.set_debug_output([](jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
     {
         printf("%s", message);
@@ -309,7 +311,7 @@ void main()
     physics.init(&info);
 
     // Create a handful of dummy entities.
-    const size_t entity_count = 1000;
+    const size_t entity_count = 10000;
 
     entity entities[entity_count];
     std::vector<const entity*> dependencies;
@@ -326,6 +328,8 @@ void main()
     }
 
     // Main loop.
+    double frame_duration_sum = 0;
+    int frame_count = 0;
     while (true)
     {
         jobs::internal::stopwatch timer;
@@ -342,10 +346,17 @@ void main()
         info.frame_end_counter.remove(info.tickable_count);
 
         timer.stop();
-        printf("=== Frame %zi finished in %.4f ms\n", frame_index + 1, timer.get_elapsed_us() / 1000.0f);
+        frame_duration_sum += timer.get_elapsed_us() / 1000.0;
+
+        if (++frame_count == 100)
+        { 
+            printf("Frame Average (over 100): %.4f ms\n", frame_duration_sum / frame_count);
+            frame_duration_sum = 0.0f;
+            frame_count = 0;
+        }
 
         // Pause between frames so we can actually read the output :).
-        jobs::scheduler::sleep(1000);
+        jobs::scheduler::sleep(10);
     }
 
     // Expected execution:
