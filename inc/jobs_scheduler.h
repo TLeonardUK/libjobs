@@ -28,6 +28,7 @@
 #ifndef __JOBS_SCHEDULER_H__
 #define __JOBS_SCHEDULER_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
 #include "jobs_memory.h"
 #include "jobs_job.h"
@@ -53,6 +54,7 @@ class job_context;
 class thread;
 class fiber;
 class counter_definition;
+class callback_scheduler;
 
 }; /* namespace internal */
 
@@ -439,7 +441,7 @@ protected:
 private:
 
     /** Default memory allocation function */
-    static void* default_alloc(size_t size);
+    static void* default_alloc(size_t size, size_t alignment);
 
     /** Default memory deallocation function */
     static void default_free(void* ptr);
@@ -523,7 +525,7 @@ private:
     std::mutex m_log_mutex;
 
     /** Total memory alloacted */
-    std::atomic<size_t> m_total_memory_allocated = 0;
+    std::atomic<size_t> m_total_memory_allocated{ 0 };
 
     /** Pending job queues, one for each priority. */
     job_queue m_pending_job_queues[(int)priority::count];
@@ -541,7 +543,7 @@ private:
     std::condition_variable m_task_complete_cvar;
 
     /** Number of jobs that have been dispatched but not completed yet. */
-    std::atomic<size_t> m_active_job_count = 0;
+    std::atomic<size_t> m_active_job_count{ 0 };
 
     /** Maximum number of dependencies jobs can have. */
     size_t m_max_dependencies = 100;
@@ -566,6 +568,13 @@ private:
 
     /** Profiling values */
     internal::fixed_pool<internal::profile_scope_definition> m_profile_scope_pool;
+
+#if defined(JOBS_PLATFORM_PS4)
+
+    /** If true, we loaded and are responsible for destryong the fiber module. */
+    bool m_owns_scesysmodule_fiber = false;
+
+#endif
 
     /** Thread local storage for a worker threads current job. */
     static thread_local size_t m_worker_job_index;

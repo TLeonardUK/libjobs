@@ -28,13 +28,31 @@
 #ifndef __JOBS_UTILS_H__
 #define __JOBS_UTILS_H__
 
+#include "jobs_defines.h"
+#include "jobs_memory.h"
+
 #include <stdint.h>
 #include <chrono>
 #include <atomic>
 #include <shared_mutex>
 #include <cassert>
+#if defined(JOBS_PLATFORM_PS4)
+// For _mm_pause intrinsic
+#include <x86intrin.h>
+#endif
 
-#include "jobs_memory.h"
+/** @todo */
+#define JOBS_MIN(x, y) ((x) < (y) ? (x) : (y))
+
+/** @todo */
+#define JOBS_MAX(x, y) ((x) > (y) ? (x) : (y))
+
+/** @todo */
+#if defined(JOBS_PLATFORM_SWITCH)
+#define JOBS_YIELD() __asm__ __volatile__ ("yield")
+#else
+#define JOBS_YIELD() _mm_pause()
+#endif
 
 namespace jobs {
 namespace internal {
@@ -234,7 +252,7 @@ public:
     /** @todo */
     void add(link* value, bool lock_required = true)
     {
-        optional_shared_lock<std::shared_mutex> lock(m_lock, lock_required);
+        optional_shared_lock<std::shared_timed_mutex> lock(m_lock, lock_required);
 
         while (true)
         {
@@ -257,7 +275,7 @@ public:
             }
             else
             {
-                _mm_pause();
+                JOBS_YIELD();
             }
         }
     }
@@ -265,7 +283,7 @@ public:
     /** @todo */
     void remove(link* value, bool lock_required = true)
     {
-        optional_shared_lock<std::shared_mutex> lock(m_lock, lock_required);
+        optional_shared_lock<std::shared_timed_mutex> lock(m_lock, lock_required);
 
         while (true)
         {
@@ -292,7 +310,7 @@ public:
             }
             else
             {
-                _mm_pause();
+                JOBS_YIELD();
             }
         }
     }
@@ -304,7 +322,7 @@ public:
     }
 
     /** @todo */
-    std::shared_mutex& get_mutex()
+    std::shared_timed_mutex& get_mutex()
     {
         return m_lock;
     }
@@ -312,13 +330,13 @@ public:
 private:
 
     /** @todo */
-    std::shared_mutex m_lock;
+    std::shared_timed_mutex m_lock;
 
     /** @todo */
     std::atomic<link*> m_head = nullptr;
 
     /** @todo */
-    std::atomic<size_t> m_uncommitted_change_index = 0;
+    std::atomic<size_t> m_uncommitted_change_index{ 0 };
 
     /** @todo */
     size_t m_change_index = 0;
@@ -345,7 +363,7 @@ public:
     result init(const memory_functions& memory_functions, int64_t capacity)
     {
         // implemented as an atomic circular buffer.
-        m_buffer = (data_type*)memory_functions.user_alloc(sizeof(data_type) * capacity);
+        m_buffer = (data_type*)memory_functions.user_alloc(sizeof(data_type) * capacity, alignof(data_type));
         m_memory_functions = memory_functions;
 
         m_head = 0;
@@ -387,7 +405,7 @@ public:
             }
             else
             {
-                _mm_pause();
+                JOBS_YIELD();
             }
         }
 
@@ -423,7 +441,7 @@ public:
             }
             else
             {
-                _mm_pause();
+                JOBS_YIELD();
             }
         }
 
@@ -595,7 +613,7 @@ public:
         m_capacity = capacity;
 
         // Alloc the object list.
-        m_objects = static_cast<data_type*>(m_memory_functions.user_alloc(sizeof(data_type) * capacity));
+        m_objects = static_cast<data_type*>(m_memory_functions.user_alloc(sizeof(data_type) * capacity, alignof(data_type)));
         if (m_objects == nullptr)
         {
             return result::out_of_memory;
@@ -689,7 +707,7 @@ private:
     atomic_queue<size_t> m_free_queue;
 
     /** @todo */
-    std::atomic<size_t> m_free_count = 0;
+    std::atomic<size_t> m_free_count{ 0 };
 };
 
 

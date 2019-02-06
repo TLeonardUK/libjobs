@@ -41,6 +41,7 @@ manual-reset:
 #ifndef __JOBS_EVENT_H__
 #define __JOBS_EVENT_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
 #include "jobs_utils.h"
 #include "jobs_counter.h"

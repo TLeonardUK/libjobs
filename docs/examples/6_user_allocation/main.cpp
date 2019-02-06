@@ -27,6 +27,12 @@
 
 #include <jobs.h>
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
+
+#if defined(JOBS_PLATFORM_WINDOWS)
+#include <malloc.h>
+#endif
 
 void debug_output(
     jobs::debug_log_verbosity level, 
@@ -39,10 +45,15 @@ void debug_output(
 // User-defined memory allocation function, in this example this is just a trampoline 
 // to malloc, but you could use this for directing memory allocations to your
 // own allocators.
-void* user_alloc(size_t size)
+void* user_alloc(size_t size, size_t alignment)
 {
-    void* ptr = malloc(size);
-    printf("Allocated %zi bytes @ 0x%p\n", size, ptr);
+#if defined(JOBS_PLATFORM_WINDOWS)
+    void* ptr = _aligned_malloc(size, alignment);
+#else
+    void* ptr = memalign(alignment, size);
+#endif
+
+    printf("Allocated %zi bytes (%zi alignment) @ 0x%p\n", size, alignment, ptr);
     return ptr;
 }
 
@@ -52,7 +63,12 @@ void* user_alloc(size_t size)
 void user_free(void* ptr)
 {
     printf("Freed 0x%p\n", ptr);
+
+#if defined(JOBS_PLATFORM_WINDOWS)
+    _aligned_free(ptr);
+#else
     free(ptr);
+#endif
 }
 
 void example()
@@ -103,11 +119,9 @@ void example()
     return;
 }
 
-void main()
+void jobsMain()
 {
     example();
 
     printf("All resources freed.\n");
-
-    return;
 }

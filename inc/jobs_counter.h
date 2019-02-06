@@ -28,6 +28,7 @@
 #ifndef __JOBS_COUNTER_H__
 #define __JOBS_COUNTER_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
 #include "jobs_utils.h"
 
@@ -37,6 +38,8 @@
 
 namespace jobs {
     
+class scheduler;
+
 namespace internal {
 
 class job_definition;

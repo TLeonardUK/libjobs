@@ -30,6 +30,7 @@
 
 #include <atomic>
 
+#include "jobs_defines.h"
 #include "jobs_utils.h"
 #include "jobs_enums.h"
 #include "jobs_scheduler.h"
@@ -113,7 +114,7 @@ public:
     //result wait_for(job_event evt);
 
     /** @todo */
-    result enter_scope(profile_scope_type type, const char* tag, bool unformatted, ...);
+    result enter_scope(profile_scope_type type, bool unformatted, const char* tag, ...);
 
     /** @todo */
     result leave_scope();

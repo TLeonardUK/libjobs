@@ -28,6 +28,7 @@
 #ifndef __JOBS_THREAD_H__
 #define __JOBS_THREAD_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
 #include "jobs_memory.h"
 

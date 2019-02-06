@@ -29,7 +29,16 @@
 #include <jobs.h>
 #include <cassert>
 #include <vector>
+#include <cstdio>
+
+#if defined(USE_PIX)
 #include <pix/include/WinPixEventRuntime/pix3.h>
+#endif
+
+// Couple of external functions implemented in the framework code, to prevent
+// a lot of code duplication between examples.
+void framework_enter_scope(jobs::profile_scope_type type, const char* tag);
+void framework_leave_scope();
 
 // Holds general information used to process a simulate a frame.
 struct frame_info
@@ -38,7 +47,7 @@ struct frame_info
     jobs::scheduler scheduler;
 
     // Number of tickables that currently exist.
-    std::atomic<size_t> tickable_count = 0;
+    std::atomic<size_t> tickable_count{ 0 };
 
     // Counter used to synchronize tickables with the start of a frame.
     jobs::counter_handle frame_counter;
@@ -242,52 +251,27 @@ private:
 
 };
 
-thread_local size_t g_profile_depth = 0;
-
-void main()
+void jobsMain()
 {
+    const size_t entity_count = 100;
+
     // The frame-info struct contains all our general information used for scheduling
     // jobs and synchronising frames.
     frame_info info;
 
     // Setup profiling functions so we can examine execution in pix.
     jobs::profile_functions profile_functions;
-    profile_functions.enter_scope = [](jobs::profile_scope_type type, const char* tag)
-    {
-        UINT64 color;
-
-        // We choose different colors dependending on the type of scope we are emitting.
-        if (type == jobs::profile_scope_type::worker)
-        {
-            color = PIX_COLOR(255, 0, 0);
-        }
-        else if (type == jobs::profile_scope_type::fiber)
-        {
-            color = PIX_COLOR(0, 0, 255);
-        }
-        else
-        {
-            color = PIX_COLOR(0, 255, 0);
-        }
-
-        // For this example we emit a pix event. You should replace this with your own profiler
-        // API, vtune, razor, whatever.
-        PIXBeginEvent(color, "%s", tag);
-    };
-    profile_functions.leave_scope = []()
-    {
-        // Leave the pix event at the top of the stack.
-        PIXEndEvent();
-    };
+    profile_functions.enter_scope = framework_enter_scope;
+    profile_functions.leave_scope = framework_leave_scope;
 
     // Setup the job scheduler.
     info.scheduler.add_thread_pool(jobs::scheduler::get_logical_core_count(), jobs::priority::all);
-    info.scheduler.set_max_callbacks(50000);
-    info.scheduler.set_max_counters(12000);
-    info.scheduler.set_max_dependencies(50000);
-    info.scheduler.set_max_jobs(50000);
-    info.scheduler.set_max_profile_scopes(50000);
-    info.scheduler.add_fiber_pool(50000, 16 * 1024);
+    info.scheduler.set_max_callbacks(entity_count * 2);
+    info.scheduler.set_max_counters(entity_count * 2);
+    info.scheduler.set_max_dependencies(entity_count * 2);
+    info.scheduler.set_max_jobs(entity_count * 2);
+    info.scheduler.set_max_profile_scopes(entity_count * 20);
+    info.scheduler.add_fiber_pool(entity_count * 2, 16 * 1024);
     info.scheduler.set_profile_functions(profile_functions);
     info.scheduler.set_debug_output([](jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
     {
@@ -311,8 +295,6 @@ void main()
     physics.init(&info);
 
     // Create a handful of dummy entities.
-    const size_t entity_count = 10000;
-
     entity entities[entity_count];
     std::vector<const entity*> dependencies;
     for (int i = 0; i < entity_count/2; i++)
@@ -362,6 +344,4 @@ void main()
     // Expected execution:
     //  Notice the order in which different things get ticked, namely how ordering is implicitly dealt
     //  with by using job syncronization.
-
-    return;
 }

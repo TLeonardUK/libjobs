@@ -28,8 +28,14 @@
 
 #include <jobs.h>
 #include <cassert>
+#include <cstdio>
+#include <cmath>
 
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 #include <pix/include/WinPixEventRuntime/pix3.h>
+#elif defined(JOBS_PLATFORM_PS4)
+#include <razorcpu.h>
+#endif
 
 void debug_output(
     jobs::debug_log_verbosity level, 
@@ -48,6 +54,8 @@ void debug_output(
 // what the scope's work consists of.
 void enter_scope(jobs::profile_scope_type type, const char* tag)
 {
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
+
     UINT64 color;
 
     // We choose different colors dependending on the type of scope we are emitting.
@@ -67,17 +75,45 @@ void enter_scope(jobs::profile_scope_type type, const char* tag)
     // For this example we emit a pix event. You should replace this with your own profiler
     // API, vtune, razor, whatever.
     PIXBeginEvent(color, "%s", tag);
+
+#elif defined(JOBS_PLATFORM_PS4)
+    
+    uint32_t color = 0xFF00FF00;
+    if (type == jobs::profile_scope_type::worker)
+    {
+        color = 0xFF0000FF;
+    }
+    else if (type == jobs::profile_scope_type::fiber)
+    {
+        color = 0xFFFF0000;
+    }
+    else
+    {
+        color = 0xFF00FF00;
+    }
+
+    sceRazorCpuPushMarker(tag, color, 0);
+
+#endif
 }
 
 // This function is invoked when a previously entered scope is left. 
 // This function should be use for terminating the marker at the top of the stack.
 void leave_scope()
 {
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
+
     // Leave the pix event at the top of the stack.
     PIXEndEvent();
+
+#elif defined(JOBS_PLATFORM_PS4)
+    
+    sceRazorCpuPopMarker();
+
+#endif
 }
 
-void main()
+void jobsMain()
 {
     jobs::scheduler scheduler;
     scheduler.add_thread_pool(jobs::scheduler::get_logical_core_count(), jobs::priority::all);
@@ -143,6 +179,4 @@ void main()
     scheduler.wait_until_idle();
 
     printf("All jobs completed.\n");
-
-    return;
 }

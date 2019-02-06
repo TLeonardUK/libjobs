@@ -66,7 +66,7 @@ result callback_scheduler::init(jobs::scheduler* scheduler, size_t max_callbacks
     }
 
     // Init main thread.
-    m_callback_thread = (thread*)m_memory_functions.user_alloc(sizeof(thread));
+    m_callback_thread = (thread*)m_memory_functions.user_alloc(sizeof(thread), alignof(thread));
     new(m_callback_thread) thread(m_memory_functions);
 
     m_callback_thread->init([&]()
@@ -127,8 +127,8 @@ uint64_t callback_scheduler::get_ms_till_next_callback()
         callback_definition& def =* m_callback_pool.get_index(i);
         if (def.active && def.duration.duration != timeout::infinite.duration)
         {
-            size_t remaining = max(0, def.duration.duration - def.stopwatch.get_elapsed_ms());
-            time_till_next = min(time_till_next, remaining);
+            size_t remaining = JOBS_MAX(0, def.duration.duration - def.stopwatch.get_elapsed_ms());
+            time_till_next = JOBS_MIN(time_till_next, remaining);
         }
     }
 

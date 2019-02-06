@@ -21,6 +21,7 @@
 
 #include "jobs_job.h"
 
+#include <cstdio>
 #include <cstdarg>
 #include <cassert>
 #include <algorithm>
@@ -47,7 +48,7 @@ void job_context::reset()
     assert(has_fiber == false);
 }
 
-result job_context::enter_scope(profile_scope_type type, const char* tag, bool unformatted, ...)
+result job_context::enter_scope(profile_scope_type type, bool unformatted, const char* tag, ...)
 {
     if (scheduler->m_profile_functions.leave_scope == nullptr)
     {
@@ -91,7 +92,7 @@ result job_context::enter_scope(profile_scope_type type, const char* tag, bool u
     else
     {
         va_list list;
-        va_start(list, unformatted);
+        va_start(list, tag);
 
         // @todo
         // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
@@ -296,8 +297,8 @@ result job_handle::set_tag(const char* tag)
 
     internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
     size_t tag_len = strlen(tag);
-    size_t to_copy = min(tag_len, internal::job_definition::max_tag_length - 1);
-#if JOBS_PLATFORM_WINDOWS
+    size_t to_copy = JOBS_MIN(tag_len, internal::job_definition::max_tag_length - 1);
+#if defined(JOBS_PLATFORM_WINDOWS)
     strncpy_s(definition.tag, internal::job_definition::max_tag_length, tag, to_copy);
 #else
     strncpy(definition.tag, tag, to_copy);
@@ -492,7 +493,7 @@ profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
 
     if (context != nullptr)
     {
-        context->enter_scope(type, tag, true);
+        context->enter_scope(type, true, tag);
     }
 
     m_context = context;

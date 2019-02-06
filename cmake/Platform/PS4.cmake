@@ -17,11 +17,24 @@
 #     misrepresented as being the original software.
 #  3. This notice may not be removed or altered from any source distribution.
 
-# Suffix appropriate build tags.
-if (CMAKE_BUILD_TYPE MATCHES "Debug")
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.debug")
-elseif (CMAKE_BUILD_TYPE MATCHES "Release")
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.release")
-else()
-	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.test")
+# Based vaguely off
+# https://github.com/AutodeskGames/stingray-plugin/blob/master/cmake/Toolchain-XBoxOne.cmake
+
+# This module is shared; use include blocker.
+if( _PS4_PLATFORM_ )
+	return()
 endif()
+set(_PS4_PLATFORM_ 1)
+
+# Extensions
+set(CMAKE_IMPORT_LIBRARY_PREFIX "")
+set(CMAKE_SHARED_LIBRARY_PREFIX "")
+set(CMAKE_SHARED_MODULE_PREFIX  "")
+set(CMAKE_STATIC_LIBRARY_PREFIX "")
+
+set(CMAKE_EXECUTABLE_SUFFIX     ".elf")
+set(CMAKE_IMPORT_LIBRARY_SUFFIX ".a")
+set(CMAKE_SHARED_LIBRARY_SUFFIX ".a")
+set(CMAKE_SHARED_MODULE_SUFFIX  ".a")
+set(CMAKE_STATIC_LIBRARY_SUFFIX ".a")
+SET(CMAKE_C_OUTPUT_EXTENSION ".o")

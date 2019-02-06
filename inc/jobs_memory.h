@@ -28,6 +28,7 @@
 #ifndef __JOBS_MEMORY_H__
 #define __JOBS_MEMORY_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
 
 #include <functional>
@@ -44,7 +45,7 @@ namespace jobs {
  *  \param size Size of block of memory to be allocated.
  *  \return Pointer to block of memory that was allocated, or nullptr on failure.
  */
-typedef std::function<void*(size_t size)> memory_alloc_function;
+typedef std::function<void*(size_t size, size_t alignment)> memory_alloc_function;
 
 /**
  *  \brief User-defined memory deallocation function.

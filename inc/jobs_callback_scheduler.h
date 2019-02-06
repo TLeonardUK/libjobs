@@ -28,6 +28,7 @@
 #ifndef __JOBS_CALLBACK_SCHEDULER_H__
 #define __JOBS_CALLBACK_SCHEDULER_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
 #include "jobs_thread.h"
 #include "jobs_utils.h"

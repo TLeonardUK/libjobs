@@ -24,10 +24,23 @@
 #include "jobs_fiber.h"
 #include "jobs_event.h"
 #include "jobs_counter.h"
+#include "jobs_utils.h"
 
 #include <stdarg.h>
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <stdlib.h>
+
+#if defined(JOBS_PLATFORM_WINDOWS)
+#include <malloc.h>
+#endif
+
+#if defined(JOBS_PLATFORM_PS4)
+#include <libsysmodule.h>
+#include <razorcpu.h>
+#endif
 
 namespace jobs {
 
@@ -63,16 +76,52 @@ scheduler::~scheduler()
             pool.pool.get_index(j)->join();
         }
     }
+
+    // Destroy all fibers
+    // Allocate fibers.
+    for (size_t i = 0; i < m_fiber_pool_count; i++)
+    {
+        fiber_pool& pool = m_fiber_pools[i];
+        for (size_t j = 0; j < pool.pool.capacity(); j++)
+        {
+            pool.pool.get_index(j)->destroy();
+        }
+    }
+
+    // Platform destruction.
+#if defined(JOBS_PLATFORM_PS4)
+
+    // Ensure fiber prx is loaded.
+    if (m_owns_scesysmodule_fiber)
+    {
+        if (sceSysmoduleUnloadModule(SCE_SYSMODULE_FIBER) != SCE_OK)
+        {
+            write_log(debug_log_verbosity::error, debug_log_group::scheduler, "failed to unload SCE_SYSMODULE_FIBER");
+        }
+
+        m_owns_scesysmodule_fiber = false;
+    }
+
+#endif
 }
 
-void* scheduler::default_alloc(size_t size)
+void* scheduler::default_alloc(size_t size, size_t alignment)
 {
-    return malloc(size);
+#if defined(JOBS_PLATFORM_WINDOWS)
+    void* ptr = _aligned_malloc(size, alignment);
+#else
+    void* ptr = memalign(alignment, size);
+#endif
+    return ptr;
 }
 
 void scheduler::default_free(void* ptr)
 {
+#if defined(JOBS_PLATFORM_WINDOWS)
+    _aligned_free(ptr);
+#else
     free(ptr);
+#endif
 }
 
 result scheduler::set_memory_functions(const memory_functions& functions)
@@ -229,29 +278,40 @@ result scheduler::init()
     m_initialized = true;
 
     // Trampoline the memory functions so we can log allocations.
-    m_memory_functions.user_alloc = [=](size_t size) -> void* {
+    m_memory_functions.user_alloc = [=](size_t size, size_t alignment) -> void* {
 
-        /** @todo: Do we care about alignment here? size_t alignment should be fine? */
-        void* ptr = m_raw_memory_functions.user_alloc(size + sizeof(size_t));
-        *reinterpret_cast<size_t*>(ptr) = size;
+        void* ptr = m_raw_memory_functions.user_alloc(size, alignment);
 
         m_total_memory_allocated += size;
-
         write_log(debug_log_verbosity::verbose, debug_log_group::memory, "allocated memory block, size=%zi ptr=0x%08p total=%zi", size, ptr, m_total_memory_allocated.load());
 
-        return reinterpret_cast<char*>(ptr) + sizeof(size_t);
+        return reinterpret_cast<char*>(ptr);
     };
     m_memory_functions.user_free = [=](void* ptr) {
-
-        void* base_ptr = reinterpret_cast<char*>(ptr) - sizeof(size_t);
-
-        size_t size = *reinterpret_cast<size_t*>(base_ptr);
-
-        m_total_memory_allocated -= size;
-
-        write_log(debug_log_verbosity::verbose, debug_log_group::memory, "freeing memory block, size=%zi ptr=0x%08p total=%zi", size, base_ptr, m_total_memory_allocated.load());
-        return m_raw_memory_functions.user_free(base_ptr);
+        return m_raw_memory_functions.user_free(ptr);
     };
+
+    // Platform initialization.
+#if defined(JOBS_PLATFORM_PS4)
+
+    // Ensure fiber prx is loaded.
+    if (sceSysmoduleIsLoaded(SCE_SYSMODULE_FIBER))
+    {
+        if (sceSysmoduleLoadModule(SCE_SYSMODULE_FIBER) != SCE_OK)
+        {
+            write_log(debug_log_verbosity::error, debug_log_group::scheduler, "failed to load SCE_SYSMODULE_FIBER");
+            return result::platform_error;
+        }
+        else
+        {
+            m_owns_scesysmodule_fiber = true;
+        }
+    }
+
+    // We do not want razor markers being tagged to fibers, this is dealt with manually.
+    sceRazorCpuDisableFiberUserMarkers();
+
+#endif
 
     // Allocate jobs.
     result result = m_job_pool.init(m_memory_functions, m_max_jobs, [this](internal::job_definition* instance, size_t index)
@@ -329,10 +389,17 @@ result scheduler::init()
         {
             new(instance) internal::fiber(m_memory_functions);
 
+            char buffer[128];
+            memset(buffer, 0, sizeof(buffer));
+#if defined(JOBS_PLATFORM_WINDOWS)
+            sprintf_s(buffer, 127, "Job (Pool=%zi Index=%zi)", i, index);
+#else
+            sprintf(buffer, "Job (Pool=%zi Index=%zi)", i, index);
+#endif
             return instance->init(pool.stack_size, [this, i, index]()
             {
                 worker_fiber_entry_point(i, index);
-            });
+            }, buffer);
         });
 
         if (result != result::success)
@@ -360,7 +427,7 @@ result scheduler::init()
 
             char buffer[128];
             memset(buffer, 0, sizeof(buffer));
-#if JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
             sprintf_s(buffer, 127, "Worker (Pool=%zi Index=%zi)", i, index);
 #else
             sprintf(buffer, "Worker (Pool=%zi Index=%zi)", i, index);
@@ -696,7 +763,7 @@ void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const
 
     write_log(debug_log_verbosity::verbose, debug_log_group::worker, "worker started, pool=%zi worker=%zi priorities=0x%08x", pool_index, worker_index, thread_pool.job_priorities);
 
-    m_worker_active_job_context->enter_scope(profile_scope_type::worker, "Worker (pool=%zi, index=%zi)", false, pool_index, worker_index);
+    m_worker_active_job_context->enter_scope(profile_scope_type::worker, false, "Worker (pool=%zi, index=%zi)", pool_index, worker_index);
 
     while (!m_destroying)
     {
@@ -721,7 +788,7 @@ void scheduler::worker_fiber_entry_point(size_t pool_index, size_t worker_index)
         // Execute the job assigned to this thread.
         write_log(debug_log_verbosity::verbose, debug_log_group::job, "executing job, index=%zi", m_worker_job_index);
 
-        m_worker_active_job_context->enter_scope(profile_scope_type::fiber, def.tag, true);
+        m_worker_active_job_context->enter_scope(profile_scope_type::fiber, true, def.tag);
 
         def.work();
         m_worker_job_completed = true;
@@ -799,7 +866,7 @@ result scheduler::requeue_job(size_t index)
     // Put job into a job queue for each priority it holds (not sure why you would want multiple priorities, but might as well support it ...).
     for (size_t i = 0; i < (int)priority::count; i++)
     {
-        size_t mask = 1i64 << i;
+        size_t mask = 1 << i;
 
         if (((size_t)def.job_priority & mask) != 0 && (def.context.queues_contained_in & mask) == 0)
         {
@@ -870,7 +937,7 @@ bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_bl
             // Look for work in each priority queue we can execute.
             for (size_t i = 0; i < (int)priority::count; i++)
             {
-                size_t mask = 1i64 << i;
+                size_t mask = 1 << i;
 
                 if (((size_t)priorities & mask) != 0)
                 {
@@ -933,7 +1000,7 @@ void scheduler::complete_job(size_t job_index)
             while (successor_def.status == internal::job_status::initialized)
             {
                 // Note: if this is showing up in your profiles, you've fucked up somewhere and not dispatched a dependent job.
-                _mm_pause();
+                JOBS_YIELD();
             }
 
             requeue_job(successor_def.index);
@@ -1079,7 +1146,7 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
     internal::stopwatch timer;
     timer.start();
 
-    while (!is_idle())
+    while (!is_idle() || m_destroying)
     {
         if (timer.get_elapsed_ms() > wait_timeout.duration)
         {
@@ -1092,7 +1159,7 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
         {
             std::unique_lock<std::mutex> lock(m_task_complete_mutex);
             
-            if (is_idle())
+            if (is_idle() || m_destroying)
             {
                 break;
             }
@@ -1167,7 +1234,7 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
         {
             internal::job_definition& other_job_def = get_job_definition(job_handle_in.m_index);
 
-            std::shared_lock<std::shared_mutex> lock(other_job_def.wait_list.get_mutex());
+            std::shared_lock<std::shared_timed_mutex> lock(other_job_def.wait_list.get_mutex());
 
             // Check it hasn't completed while acquiring lock.
             if (other_job_def.status == internal::job_status::completed)
@@ -1396,6 +1463,12 @@ void scheduler::wait_for_job_available()
     profile_scope scope_(profile_scope_type::user_defined, "wait_for_job_available");
 
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
+
+    if (m_destroying)
+    {
+        return;
+    }
+
     m_task_available_cvar.wait(lock);
 }
 

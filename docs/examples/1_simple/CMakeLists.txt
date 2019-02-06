@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 3.8)
 
 project(1_simple C CXX)
 
-include(${libjobs_SOURCE_DIR}/CMakeLists.Common.txt)
+include(${libjobs_SOURCE_DIR}/cmake/Common.cmake)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
@@ -31,10 +31,13 @@ include_directories(
 	${libjobs_SOURCE_DIR}/inc 
 )
 
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(${PROJECT_NAME} 
+	../common/example_framework.cpp 
+	main.cpp
+)
 
 target_link_libraries(${PROJECT_NAME}
 	libjobs
 )
 
-include(${libjobs_SOURCE_DIR}/CMakeLists.TargetCommon.txt)
+include(${libjobs_SOURCE_DIR}/cmake/CommonExecutable.cmake)

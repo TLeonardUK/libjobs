@@ -27,6 +27,7 @@
 
 #include <jobs.h>
 #include <cassert>
+#include <cstdio>
 
 // This is the function that will be called when the scheduler wants to write out 
 // debugging messages. 
@@ -46,7 +47,7 @@ void debug_output(
     printf("%s", message);
 }
 
-void main()
+void jobsMain()
 {
     jobs::scheduler scheduler;
     scheduler.add_thread_pool(jobs::scheduler::get_logical_core_count(), jobs::priority::all);
@@ -83,6 +84,4 @@ void main()
     scheduler.wait_until_idle();
 
     printf("All jobs completed.\n");
-
-    return;
 }

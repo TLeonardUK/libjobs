@@ -21,10 +21,10 @@ cmake_minimum_required(VERSION 3.8)
 
 project(libjobs C CXX)
 
-include(${CMAKE_SOURCE_DIR}/CMakeLists.Common.txt)
+include(${CMAKE_SOURCE_DIR}/cmake/Common.cmake)
 
 # Build options.
-option(BUILD_DOC "Build documentation" ON)
+option(BUILD_DOC "Build documentation" OFF)
 option(BUILD_EXAMPLES "Build examples" ON)
 
 # Version
@@ -66,9 +66,7 @@ add_library(${PROJECT_NAME} STATIC
 	"src/jobs_utils.cpp"
 )
 
-target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
-
-include(${libjobs_SOURCE_DIR}/CMakeLists.TargetCommon.txt)
+include(${libjobs_SOURCE_DIR}/cmake/CommonLibrary.cmake)
 
 # Generate documentation if available.
 if (BUILD_DOC)

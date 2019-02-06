@@ -24,6 +24,7 @@
 #include "jobs_utils.h"
 
 #include <cassert>
+#include <cstdio>
 
 namespace jobs {
 namespace internal {
@@ -116,7 +117,7 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
             {
                 profile_scope scope(profile_scope_type::fiber, "put to sleep");
 
-                std::shared_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+                std::shared_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
 
                 // Try and consume value.
                 if (def.value == value)
@@ -191,7 +192,7 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
         internal::stopwatch timer;
         timer.start();
 
-        std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+        std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
 
         printf("Waiting on value %zi\n", value);
 
@@ -238,14 +239,14 @@ result counter_handle::add(size_t value)
     {
         profile_scope scope(profile_scope_type::fiber, "lock & increment");
 
-        std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+        std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
         def.value += value;
         changed_value = def.value;
 
         def.value_cvar.notify_all();
-    }
 
-    notify_value_changed(changed_value);
+        notify_value_changed(changed_value, false);
+    }
 
     return result::success;
 }
@@ -273,7 +274,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
             {
                 profile_scope scope(profile_scope_type::fiber, "put to sleep");
 
-                std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+                std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
 
                 // Try and consume value.
                 // this is problematic since we already have a lock above.
@@ -340,7 +341,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
 
             // Try and consume value.
             {
-                std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+                std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
 
                 if (!try_remove_value(value))
                 {
@@ -363,7 +364,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
        // printf("Waiting on remove %zi\n", value);
 
         {
-            std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+            std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
 
             // Keep looping until we manage to decrease the value.
             while (true)
@@ -398,9 +399,9 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                     }
                 }
             }
-        }
 
-        notify_value_changed(changed_value);
+            notify_value_changed(changed_value, false);
+        }
     }
 
     return result::success;
@@ -449,12 +450,12 @@ result counter_handle::set(size_t value)
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     {
-        std::unique_lock<std::shared_mutex> lock(def.wait_list.get_mutex());
+        std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
         def.value = value;
         def.value_cvar.notify_all();
-    }
 
-    notify_value_changed(value);
+        notify_value_changed(value, false);
+    }
 
     return result::success;
 }
@@ -494,6 +495,8 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
     size_t signalled_job_count = 0;
 
     {
+        profile_scope scope(profile_scope_type::fiber, "wake up waiting");
+
         internal::multiple_writer_single_reader_list<internal::job_definition*>::iterator iter;
         for (def.wait_list.iterate(iter, lock_required); iter; iter++)
         {
@@ -526,6 +529,8 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
 
     if (signalled_job_count > 0)
     {
+        profile_scope scope(profile_scope_type::fiber, "signal worker threads");
+
         //printf("Signalled %i jobs due to change to %zi.\n", signalled_job_count, new_value);
 
         // Wake up worker threads.

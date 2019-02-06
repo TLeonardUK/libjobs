@@ -20,28 +20,35 @@
 */
 
 /**
- *  \file jobs_platform.h
+ *  \file jobs_defines.h
  *
- *  Include header for platform specific defines.
+ *  Main include header that includes compile defines. Should be included in all files.
  */
 
-#ifndef __JOBS_PLATFORM_H__
-#define __JOBS_PLATFORM_H__
+#ifndef __JOBS_DEFINES_H__
+#define __JOBS_DEFINES_H__
 
-#if defined(__ORBIS__) 
-#	define JOBS_PLATFORM_PS4 1
-#elif defined(XBOX) || defined(_XBOX_ONE) || defined(_DURANGO)
-#	define JOBS_PLATFORM_XBOX_ONE 1
+#if defined(__ORBIS__)
+#   define JOBS_PLATFORM_PS4
+#elif defined(_DURANGO)
+#   define JOBS_PLATFORM_XBOXONE
+#elif defined(NN_BUILD_TARGET_PLATFORM_NX)
+#   define JOBS_PLATFORM_SWITCH
 #elif defined(_WIN32)
-#	define JOBS_PLATFORM_WINDOWS 1
-#else
+#   define JOBS_PLATFORM_WINDOWS
+#endif
+
+#if !defined(JOBS_PLATFORM_PS4) && \
+    !defined(JOBS_PLATFORM_XBOX_ONE) && \
+    !defined(JOBS_PLATFORM_SWITCH) && \
+    !defined(JOBS_PLATFORM_WINDOWS) 
 #	error Unknown or unimplemented platform
 #endif
 
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
 #	define WIN32_LEAN_AND_MEAN  1
 #	define VC_EXTRALEAN 1
 #	include <Windows.h>
 #endif
 
-#endif /* __JOBS_MEMORY_H__ */
+#endif // __JOBS_DEFINES_H__

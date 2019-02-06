@@ -37,13 +37,48 @@ fiber::fiber(const memory_functions& memory_functions)
 
 fiber::~fiber()
 {
+    destroy();
 }
 
-result fiber::init(size_t stack_size, const fiber_entry_point& entry_point)
+void fiber::destroy()
+{
+#if defined(JOBS_PLATFORM_WINDOWS)
+
+    if (m_fiber_handle != nullptr)
+    {
+        DeleteFiber(m_fiber_handle);
+        m_fiber_handle = nullptr;
+    }
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    if (m_fiber_handle_created)
+    {
+        sceFiberFinalize(&m_fiber_handle);
+        m_fiber_handle_created = false;
+    }
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    // @todo
+
+#elif defined(JOBS_PLATFORM_XBOXONE)
+
+    // @todo
+
+#else
+
+#	error Unimplemented platform
+
+#endif
+}
+
+result fiber::init(size_t stack_size, const fiber_entry_point& entry_point, const char* name)
 {
     m_entry_point = entry_point;
 
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+
     m_fiber_handle = CreateFiberEx(stack_size, stack_size, FIBER_FLAG_FLOAT_SWITCH, trampoline_entry_point, this);
     if (m_fiber_handle == nullptr)
     {
@@ -56,8 +91,35 @@ result fiber::init(size_t stack_size, const fiber_entry_point& entry_point)
 
         return result::platform_error;
     }
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    m_fiber_context = m_memory_functions.user_alloc(stack_size, SCE_FIBER_CONTEXT_ALIGNMENT);
+    if (m_fiber_context == nullptr)
+    {
+        return result::out_of_memory;
+    }
+
+    int32_t ret = sceFiberInitialize(&m_fiber_handle, name, trampoline_entry_point, reinterpret_cast<uint64_t>(this), m_fiber_context, stack_size, nullptr);
+    if (ret != SCE_OK)
+    {
+        return result::platform_error;
+    }
+
+    m_fiber_handle_created = true;
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    // @todo
+
+#elif defined(JOBS_PLATFORM_XBOXONE)
+
+    // @todo
+
 #else
+
 #	error Unimplemented platform
+
 #endif
 
     return result::success;
@@ -68,10 +130,27 @@ fiber fiber::convert_thread_to_fiber()
     fiber new_fiber;
     new_fiber.m_entry_point = nullptr;
 
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+
     new_fiber.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);;
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    // @todo
+    new_fiber.m_is_thread = true;
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    // @todo
+
+#elif defined(JOBS_PLATFORM_XBOXONE)
+
+    // @todo
+
 #else
+
 #	error Unimplemented platform
+
 #endif
 
     return new_fiber;
@@ -79,30 +158,87 @@ fiber fiber::convert_thread_to_fiber()
 
 void fiber::convert_fiber_to_thread()
 {
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+
     ConvertFiberToThread();
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    //Nothing to do.
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    // @todo
+
+#elif defined(JOBS_PLATFORM_XBOXONE)
+
+    // @todo
+
 #else
+
 #	error Unimplemented platform
+
 #endif
 }
 
 result fiber::switch_to()
 {
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+
     SwitchToFiber(m_fiber_handle);
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    if (m_is_thread)
+    {
+        int32_t ret = sceFiberReturnToThread(0, 0);
+        if (ret != SCE_OK)
+        {
+            return result::platform_error;
+        }
+    }
+    else
+    {
+        int32_t ret = sceFiberRun(&m_fiber_handle, 0, 0);
+        if (ret != SCE_OK)
+        {
+            return result::platform_error;
+        }
+    }
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    // @todo
+
+#elif defined(JOBS_PLATFORM_XBOXONE)
+
+    // @todo
+
 #else
+
 #	error Unimplemented platform
+
 #endif
 
     return result::success;
 }
 
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+
 VOID CALLBACK fiber::trampoline_entry_point(PVOID lpParameter)
 {
     fiber* this_fiber = reinterpret_cast<fiber*>(GetFiberData());
     this_fiber->m_entry_point();
 }
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+void fiber::trampoline_entry_point(uint64_t argOnInitialize, uint64_t argOnRun)
+{
+    fiber* this_fiber = reinterpret_cast<fiber*>(argOnInitialize);
+    this_fiber->m_entry_point();    
+}
+
 #endif
 
 }; /* namespace internal */

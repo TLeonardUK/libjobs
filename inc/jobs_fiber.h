@@ -28,11 +28,15 @@
 #ifndef __JOBS_FIBER_H__
 #define __JOBS_FIBER_H__
 
+#include "jobs_defines.h"
 #include "jobs_enums.h"
-#include "jobs_platform.h"
 #include "jobs_memory.h"
 
 #include <functional>
+
+#if defined(JOBS_PLATFORM_PS4)
+#include <sce_fiber.h>
+#endif
 
 namespace jobs {
 namespace internal {
@@ -65,15 +69,19 @@ public:
     /** Destructor. */
     ~fiber();
 
+    /** Disposes of all resources. Performed automatically in destructor if not called beforehand. */
+    void destroy();
+
     /**
      * \brief Initializes this fiber.
      *
      * \param stack_size Size of the stack that should be allocated for this fibers execution context.
      * \param entry_point Function that this fiber should start running when executed.
+     * \param name Descriptive name of this fiber.
      *
      * \return Value indicating the success of this function.
      */
-    result init(size_t stack_size, const fiber_entry_point& entry_point);
+    result init(size_t stack_size, const fiber_entry_point& entry_point, const char* name);
 
     /**
      * \brief Switches this threads execution context to this fiber.
@@ -102,9 +110,17 @@ public:
 
 private:
 
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+    
     /** Trampoline function used to call the user-defined entry point. */
     static VOID CALLBACK trampoline_entry_point(PVOID lpParameter);
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    /** Trampoline function used to call the user-defined entry point. */
+    __attribute__((noreturn))
+    static void trampoline_entry_point(uint64_t argOnInitialize, uint64_t argOnRun);
+
 #endif
 
 private:
@@ -115,9 +131,25 @@ private:
     /** User defined entry point to execute when the fiber is run. */
     fiber_entry_point m_entry_point;
 
-#ifdef JOBS_PLATFORM_WINDOWS
+#if defined(JOBS_PLATFORM_WINDOWS)
+
     /** Handle of platform defined fiber. */
     LPVOID m_fiber_handle;
+
+#elif defined(JOBS_PLATFORM_PS4)
+
+    /** Handle of platform defined fiber. */
+    SceFiber m_fiber_handle __attribute__((aligned(SCE_FIBER_ALIGNMENT)));
+
+    /** True if fiber handle is valid. */
+    bool m_fiber_handle_created = false;
+
+    /** Stack space allocated to fiber context. */
+    void* m_fiber_context;
+
+    /** Stack space allocated to fiber context. */
+    bool m_is_thread = false;
+
 #endif
 
 };

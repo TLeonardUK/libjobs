@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 3.8)
 
 project(7_game_loop C CXX)
 
-include(${libjobs_SOURCE_DIR}/CMakeLists.Common.txt)
+include(${libjobs_SOURCE_DIR}/cmake/Common.cmake)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
@@ -32,14 +32,21 @@ include_directories(
 	${libjobs_SOURCE_DIR}/third_party
 )
 
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(${PROJECT_NAME} 
+	../common/example_framework.cpp 
+	main.cpp
+)
 
 target_link_libraries(${PROJECT_NAME}
 	libjobs
 )
 
-# Copy pix dll to output folder.
-configure_file(${libjobs_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.dll
-			   ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WinPixEventRuntime.dll COPYONLY)
+if (USE_PIX)
+	target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
 
-include(${libjobs_SOURCE_DIR}/CMakeLists.TargetCommon.txt)
+	# Copy pix dll to output folder.
+	configure_file(${libjobs_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.dll
+				   ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WinPixEventRuntime.dll COPYONLY)
+endif()
+			
+include(${libjobs_SOURCE_DIR}/cmake/CommonExecutable.cmake)

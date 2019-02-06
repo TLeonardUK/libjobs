@@ -28,6 +28,7 @@
 #ifndef __JOBS_ENUM_H__
 #define __JOBS_ENUM_H__
 
+#include "jobs_defines.h"
 #include <stdint.h>
 #include <chrono>
 

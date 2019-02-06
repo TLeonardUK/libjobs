@@ -3,3 +3,7 @@ lib/
 .vs/
 docs/html/
 enc_temp_folder/
+ORBISRelease/
+ORBISDebug/
+ORBIS_Release/
+ORBIS_Debug/

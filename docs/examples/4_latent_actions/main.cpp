@@ -37,7 +37,7 @@ void debug_output(
     printf("%s", message);
 }
 
-void main()
+void jobsMain()
 {
     // Create scheduler.
     jobs::scheduler scheduler;
@@ -173,6 +173,4 @@ void main()
     scheduler.wait_until_idle();
 
     printf("All jobs completed.\n");
-
-    return;
 }

@@ -22,10 +22,11 @@
 // This example shows the minimal steps required to setup and 
 // run a simple job on a scheduler.
 
+#include <cstdio>
 #include <jobs.h>
 #include <cassert>
 
-void main()
+void jobsMain()
 {
     jobs::scheduler scheduler;
 
@@ -85,6 +86,4 @@ void main()
     scheduler.wait_until_idle();
 
     printf("All jobs completed.\n");
-
-    return;
 }

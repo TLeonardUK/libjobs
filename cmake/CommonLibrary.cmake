@@ -17,26 +17,11 @@
 #     misrepresented as being the original software.
 #  3. This notice may not be removed or altered from any source distribution.
 
-# Figure out architecture
-if("${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")
-	set(TARGET_ARCHITECTURE "x86" CACHE INTERNAL "")
+# Suffix appropriate build tags.
+if (CMAKE_BUILD_TYPE MATCHES "Debug")
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.debug")
 else()
-	set(TARGET_ARCHITECTURE "x64" CACHE INTERNAL "")
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.release")
 endif()
 
-set(TARGET_SYSTEM "${CMAKE_SYSTEM_NAME}" CACHE INTERNAL "")
-string(TOLOWER ${TARGET_SYSTEM} TARGET_SYSTEM)
-
-# Pix enabled
-add_definitions(-DUSE_PIX)
-
-# Enable fiber-safe optimizations on msvc build, otherwise it will cache thread_local vars
-# and make various things explode when we switch context's.
-if (MSVC)
-	set(CMAKE_C_FLAGS_RELEASE			"${CMAKE_C_FLAGS_RELEASE} /GT")
-	set(CMAKE_CXX_FLAGS_RELEASE			"${CMAKE_CXX_FLAGS_RELEASE} /GT")
-	set(CMAKE_C_FLAGS_RELWITHDEBINFO	"${CMAKE_C_FLAGS_RELWITHDEBINFO} /GT")
-	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO	"${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GT")
-	set(CMAKE_C_FLAGS_DEBUG				"${CMAKE_C_FLAGS_DEBUG} /GT")
-	set(CMAKE_CXX_FLAGS_DEBUG			"${CMAKE_CXX_FLAGS_DEBUG} /GT")
-endif(MSVC)
+SET_TARGET_PROPERTIES(${PROJECT_NAME} PROPERTIES PREFIX "")
