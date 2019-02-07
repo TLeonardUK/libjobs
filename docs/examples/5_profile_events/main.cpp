@@ -157,11 +157,11 @@ void jobsMain()
             // different scopes appear on the profile.
             for (int i = 0; i < 10; i++)
             {
-                // You can use jobs::profile_scope to define your own scopes. This struct follows
+                // You can use jobs_profile_scope to define your own scopes. This struct follows
                 // simple RAII rules. When it constructed it enters a profile scope, when it 
                 // is destroyed it leaves a profile scope. You can easily nest these to deliminate
                 // useful profiling information.
-                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "Dummy Work");
+                jobs_profile_scope(jobs::profile_scope_type::user_defined, "Dummy Work");
 
                 // Some dummy work so we don't complete instantly. Marked as volatile
                 // to prevent removal during optimization.

@@ -141,7 +141,7 @@ private:
         {
             // Wait for the next frame to start processing.
             {
-                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "wait for frame");
+                jobs_profile_scope(jobs::profile_scope_type::user_defined, "wait for frame");
 
                 size_t frame = 0;
                 jobs::result result = m_last_tick_frame.get(frame);
@@ -152,14 +152,14 @@ private:
 
             // Perform any processing required.
             {
-                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "tick");
+                jobs_profile_scope(jobs::profile_scope_type::user_defined, "tick");
 
                 tick();
             }
 
             // Mark as complete for this frame.
             {
-                jobs::profile_scope scope(jobs::profile_scope_type::user_defined, "mark complete");
+                jobs_profile_scope(jobs::profile_scope_type::user_defined, "mark complete");
 
                 m_frame_info->frame_end_counter.add(1);
                 m_last_tick_frame.add(1);
@@ -199,6 +199,10 @@ public:
 protected:
     virtual void tick()
     {
+        // Some dummy work.
+        //volatile double sum = 0;
+        //for (int i = 0; i < 1000; i++) sum += atan2(i, i / 2);
+
         // Here you would do some collision checking between entities.
 
         //printf("physics_system[%zi]: ticked\n", m_tickable_index);
@@ -228,14 +232,18 @@ protected:
 
         // Sync to our dependent entities if we have any
         {
-            jobs::profile_scope(jobs::profile_scope_type::user_defined, "sync block");
+            jobs_profile_scope(jobs::profile_scope_type::user_defined, "sync block");
 
             for (auto& entity : m_dependencies)
             {
-                jobs::profile_scope(jobs::profile_scope_type::user_defined, "sync");
+                jobs_profile_scope(jobs::profile_scope_type::user_defined, "sync");
                 //entity->sync();
             }
         }
+
+        // Some dummy work.
+        //volatile double sum = 0;
+        //for (int i = 0; i < 1000; i++) sum += atan2(i, i / 2);
 
         // Here you would perform typical entity processing, checking for collision, moving, etc.
         //printf("entity[%zi]: ticked\n", m_tickable_index);
@@ -253,7 +261,7 @@ private:
 
 void jobsMain()
 {
-    const size_t entity_count = 100;
+    const size_t entity_count = 1000;
 
     // The frame-info struct contains all our general information used for scheduling
     // jobs and synchronising frames.
@@ -272,11 +280,11 @@ void jobsMain()
     info.scheduler.set_max_jobs(entity_count * 2);
     info.scheduler.set_max_profile_scopes(entity_count * 20);
     info.scheduler.add_fiber_pool(entity_count * 2, 16 * 1024);
-    info.scheduler.set_profile_functions(profile_functions);
+    //info.scheduler.set_profile_functions(profile_functions);
     info.scheduler.set_debug_output([](jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
     {
         printf("%s", message);
-    });
+    }, jobs::debug_log_verbosity::message);
 
     // Initializes the scheduler.
     jobs::result result = info.scheduler.init();

@@ -303,6 +303,15 @@ public:
     static internal::job_context* get_active_job_context();
 
     /**
+     * \brief Gets if the active scheduler has profiling enabled.
+     *
+     * Used to early-out of various bits of profiling code.
+     *
+     * \return True if profiling is active.
+     */
+    static bool is_profiling_active();
+
+    /**
      * \brief Gets the definition of the job currently running on calling thread.
      *
      * Generally this should not need to be called by user-code. Rather the wrappers that
@@ -503,6 +512,9 @@ private:
     /** True if the scheduler is being torn down and threads need to exit. */
     bool m_destroying = false;
 
+    /** True if the platform is fiber-aware for profiling purposes. Means we don't have to push/pop profile stack when we switch fiber context. */
+    bool m_platform_fiber_aware = false;
+
     /** Pool of jobs that can be allocated. */
     internal::fixed_pool<internal::job_definition> m_job_pool;
 
@@ -593,6 +605,9 @@ private:
 
     /** Thread local cache for allocating profile scopes speedily. */
     static thread_local internal::fixed_queue<internal::profile_scope_definition*, 32> m_profile_scope_thread_local_cache;
+
+    /** Determines if profiling is active or not. */
+    static bool m_profiling_active;
 };
 
 }; /* namespace jobs */

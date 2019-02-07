@@ -70,6 +70,9 @@ public:
     std::condition_variable_any value_cvar;
 
     /** @todo */
+    std::mutex value_cvar_mutex;
+
+    /** @todo */
     multiple_writer_single_reader_list<internal::job_definition*> wait_list;
 
 };
@@ -146,10 +149,13 @@ public:
 private:
 
     /** @todo */
+    bool modify_value(size_t new_value, bool absolute, bool subtract = false, bool lock_required = true);
+
+    /** @todo */
     void notify_value_changed(size_t new_value, bool lock_required = true);
 
     /** @todo */
-    void add_to_wait_list(internal::job_definition* job_def);
+    bool add_to_wait_list(internal::job_definition* job_def);
 
     /** @todo */
     void remove_from_wait_list(internal::job_definition* job_def);

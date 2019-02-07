@@ -29,6 +29,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${libjobs_SOURCE_DIR}/bin/${TARGET_SYSTEM}_${
 
 include_directories(
 	${libjobs_SOURCE_DIR}/inc 
+	${libjobs_SOURCE_DIR}/third_party
 )
 
 add_executable(${PROJECT_NAME} 

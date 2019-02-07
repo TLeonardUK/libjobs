@@ -50,6 +50,7 @@ thread_local bool scheduler::m_worker_job_supress_requeue = false;
 thread_local internal::job_context scheduler::m_worker_job_context;
 thread_local internal::job_context* scheduler::m_worker_active_job_context = nullptr;
 thread_local internal::fixed_queue<internal::profile_scope_definition*, 32> scheduler::m_profile_scope_thread_local_cache;
+bool scheduler::m_profiling_active = false;
 
 scheduler::scheduler()
 {
@@ -144,6 +145,7 @@ result scheduler::set_profile_functions(const profile_functions& functions)
     }
 
     m_profile_functions = functions;
+    m_profiling_active = (functions.enter_scope != nullptr && functions.leave_scope != nullptr);
 
     return result::success;
 }
@@ -308,8 +310,7 @@ result scheduler::init()
         }
     }
 
-    // We do not want razor markers being tagged to fibers, this is dealt with manually.
-    sceRazorCpuDisableFiberUserMarkers();
+    m_platform_fiber_aware = true;
 
 #endif
 
@@ -417,6 +418,8 @@ result scheduler::init()
     std::sort(m_fiber_pools_sorted_by_stack, m_fiber_pools_sorted_by_stack + m_fiber_pool_count, fiber_sort_predicate);
 
     // Allocate threads.
+    size_t thread_index = 0;
+    size_t logical_cores = get_logical_core_count();
     for (size_t i = 0; i < m_thread_pool_count; i++)
     {
         thread_pool& pool = m_thread_pools[i];
@@ -425,18 +428,21 @@ result scheduler::init()
         {
             new(instance) internal::thread(m_memory_functions);
 
+            size_t core_affinity = (1 << (thread_index % logical_cores));
+            thread_index++;
+
             char buffer[128];
             memset(buffer, 0, sizeof(buffer));
 #if defined(JOBS_PLATFORM_WINDOWS)
-            sprintf_s(buffer, 127, "Worker (Pool=%zi Index=%zi)", i, index);
+            sprintf_s(buffer, 127, "Worker (Pool=%zi:%zi Affinity=%zi)", i, index, core_affinity);
 #else
-            sprintf(buffer, "Worker (Pool=%zi Index=%zi)", i, index);
+            sprintf(buffer, "Worker (Pool=%zi:%zi Affinity=%zi)", i, index, core_affinity);
 #endif
 
             return instance->init([&]()
             {
                 worker_entry_point(i, index, *instance, pool);
-            }, buffer);
+            }, buffer, core_affinity);
         });
 
         if (result != result::success)
@@ -573,9 +579,9 @@ void scheduler::decrease_counter_ref_count(size_t index)
 void scheduler::leave_context(internal::job_context& context)
 {
     // Remove everything from the profile scope stack.
-    if (m_profile_functions.leave_scope != nullptr)
+    if (m_profile_functions.leave_scope != nullptr && !m_platform_fiber_aware)
     {
-        //printf("[leave_context] leaving %i\n", context.profile_scope_depth);
+        //printf("[leave_context] leaving %zi\n", context.profile_scope_depth);
         for (size_t i = 0; i < context.profile_scope_depth; i++)
         {
             m_profile_functions.leave_scope();
@@ -596,13 +602,14 @@ void scheduler::enter_context(internal::job_context& context)
     }
 
     // Recreate the profile scope stack.
-    if (m_profile_functions.enter_scope != nullptr)
+    if (m_profile_functions.enter_scope != nullptr && !m_platform_fiber_aware)
     {
         //printf("[enter_context] entering %i\n", context.profile_scope_depth);
         internal::profile_scope_definition* scope = context.profile_stack_head;
         while (scope != nullptr)
         {
             m_profile_functions.enter_scope(scope->type, scope->tag);
+            //printf("\t%s\n", scope->tag);
             scope = scope->next;
         }
     }
@@ -757,7 +764,7 @@ void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const
     m_worker_job_context.scheduler = this;
     m_worker_job_context.has_fiber = true;
     m_worker_job_context.is_fiber_raw = true;
-    m_worker_job_context.raw_fiber = internal::fiber::convert_thread_to_fiber();
+    internal::fiber::convert_thread_to_fiber(m_worker_job_context.raw_fiber);
     m_worker_job_context.job_def = nullptr;
     m_worker_active_job_context = &m_worker_job_context;
 
@@ -809,7 +816,7 @@ internal::job_definition& scheduler::get_job_definition(size_t index)
 
 result scheduler::dispatch_job(size_t index)
 {
-    profile_scope scope_(profile_scope_type::user_defined, "dispatch_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::dispatch_job");
 
     internal::job_definition& def = get_job_definition(index);
 
@@ -845,7 +852,7 @@ result scheduler::dispatch_job(size_t index)
 
 result scheduler::requeue_job(size_t index)
 {
-    profile_scope scope(profile_scope_type::user_defined, "requeue_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::requeue_job");
 
     internal::job_definition& def = get_job_definition(index);
 
@@ -866,7 +873,7 @@ result scheduler::requeue_job(size_t index)
     // Put job into a job queue for each priority it holds (not sure why you would want multiple priorities, but might as well support it ...).
     for (size_t i = 0; i < (int)priority::count; i++)
     {
-        size_t mask = 1 << i;
+        int mask = 1 << i;
 
         if (((size_t)def.job_priority & mask) != 0 && (def.context.queues_contained_in & mask) == 0)
         {
@@ -884,7 +891,7 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 {
     bool shifted_last_iteration = false;
 
-    profile_scope scope(profile_scope_type::user_defined, "get_next_job_from_queue");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::get_next_job_from_queue");
 
     //printf("get_next_job_from_queue\n");
 
@@ -927,17 +934,17 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
 bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_block)
 {
-    profile_scope scope(profile_scope_type::user_defined, "get_next_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::get_next_job");
 
     while (!m_destroying)
     {
         {
-            profile_scope scope(profile_scope_type::user_defined, "dequeueing");
+            jobs_profile_scope(profile_scope_type::worker, "dequeue job");
 
             // Look for work in each priority queue we can execute.
             for (size_t i = 0; i < (int)priority::count; i++)
             {
-                size_t mask = 1 << i;
+                int mask = 1 << i;
 
                 if (((size_t)priorities & mask) != 0)
                 {
@@ -963,7 +970,7 @@ bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_bl
 
 void scheduler::complete_job(size_t job_index)
 {
-    profile_scope scope(profile_scope_type::worker, "complete_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::complete_job");
 
     internal::job_definition& def = get_job_definition(job_index);
 
@@ -1186,7 +1193,7 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
 
 result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//, priority assist_on_tasks)
 {
-    profile_scope scope(profile_scope_type::worker, "scheduler::wait_for_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job");
 
     // @todo if we are already signaled and not auto-reset, just return.
     internal::job_context* context = get_active_job_context();
@@ -1234,7 +1241,7 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
         {
             internal::job_definition& other_job_def = get_job_definition(job_handle_in.m_index);
 
-            std::shared_lock<std::shared_timed_mutex> lock(other_job_def.wait_list.get_mutex());
+            internal::spinwait_shared_lock lock(other_job_def.wait_list.get_mutex());
 
             // Check it hasn't completed while acquiring lock.
             if (other_job_def.status == internal::job_status::completed)
@@ -1427,6 +1434,11 @@ internal::job_context* scheduler::get_active_job_context()
     return m_worker_active_job_context;
 }
 
+bool scheduler::is_profiling_active()
+{
+    return m_profiling_active;
+}
+
 internal::job_context* scheduler::get_worker_job_context()
 {
     return &m_worker_job_context;
@@ -1446,21 +1458,21 @@ internal::job_definition* scheduler::get_active_job_definition()
 
 void scheduler::notify_job_available()
 {
-    profile_scope scope_(profile_scope_type::user_defined, "notify_job_available");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_available");
 
     m_task_available_cvar.notify_all();
 }
 
 void scheduler::notify_job_complete()
 {
-    profile_scope scope_(profile_scope_type::user_defined, "notify_job_complete");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_complete");
 
     m_task_complete_cvar.notify_all();
 }
 
 void scheduler::wait_for_job_available()
 {
-    profile_scope scope_(profile_scope_type::user_defined, "wait_for_job_available");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job_available");
 
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
@@ -1474,7 +1486,11 @@ void scheduler::wait_for_job_available()
 
 size_t scheduler::get_logical_core_count()
 {
+#if defined(JOBS_PLATFORM_PS4)
+    return 6; // Using the 7th core for workers can cause sync problems if a mutex gets held when its timesliced back to the OS.
+#else
     return std::thread::hardware_concurrency();
+#endif
 }
 
 }; /* namespace jobs */

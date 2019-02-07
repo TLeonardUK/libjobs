@@ -40,13 +40,5 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
 	libjobs
 )
-
-if (USE_PIX)
-	target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)
-
-	# Copy pix dll to output folder.
-	configure_file(${libjobs_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.dll
-				   ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WinPixEventRuntime.dll COPYONLY)
-endif()
-			
+	
 include(${libjobs_SOURCE_DIR}/cmake/CommonExecutable.cmake)

@@ -42,7 +42,7 @@ thread::~thread()
     join();
 }
 
-result thread::init(const thread_entry_point& entry_point, const char* name)
+result thread::init(const thread_entry_point& entry_point, const char* name, size_t core_affinity)
 {
 #if defined(JOBS_PLATFORM_WINDOWS)
 
@@ -58,8 +58,9 @@ result thread::init(const thread_entry_point& entry_point, const char* name)
 
 #elif defined(JOBS_PLATFORM_PS4)
     
-    std::thread new_thread([entry_point, name]() {
+    std::thread new_thread([entry_point, name, core_affinity]() {
         scePthreadRename(scePthreadSelf(), name);
+        scePthreadSetaffinity(scePthreadSelf(), (SceKernelCpumask)core_affinity);
         entry_point();
     });
 

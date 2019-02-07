@@ -48,11 +48,17 @@
 #define JOBS_MAX(x, y) ((x) > (y) ? (x) : (y))
 
 /** @todo */
+/*
 #if defined(JOBS_PLATFORM_SWITCH)
 #define JOBS_YIELD() __asm__ __volatile__ ("yield")
 #else
 #define JOBS_YIELD() _mm_pause()
 #endif
+*/
+
+// Not sure if this is actually beneficial from what I've read
+// so I'm disabling it for the time being as it saves some amount of time.
+#define JOBS_YIELD()
 
 namespace jobs {
 namespace internal {
@@ -148,6 +154,117 @@ private:
 };
 
 /** @todo */
+struct spinwait_mutex
+{
+public:
+
+    /** @todo */
+    void lock()
+    {
+        while (true)
+        {
+            uint8_t old_value = 0;
+            uint8_t new_value = 1;
+
+            if (m_locked.compare_exchange_strong(old_value, new_value))
+            {
+                return;
+            }
+
+            JOBS_YIELD();
+        }
+    }
+
+    /** @todo */
+    void unlock()
+    {
+        m_locked = 0;
+    }
+
+    /** @todo */
+    void lock_shared()
+    {
+        lock();
+    }
+
+    /** @todo */
+    void unlock_shared()
+    {
+        unlock();
+    }
+
+private:
+
+    /** @todo */
+    std::atomic<uint8_t> m_locked{0};
+
+}; 
+
+/** @todo */
+struct spinwait_lock
+{
+public:
+    spinwait_lock(spinwait_mutex& mutex, bool do_lock = true)
+        : m_mutex(mutex)
+        , m_do_lock(do_lock)
+    {
+        if (m_do_lock)
+        {
+            m_mutex.lock();
+        }
+    }
+
+    ~spinwait_lock()
+    {
+        if (m_do_lock)
+        {
+            m_mutex.unlock();
+        }
+    }
+
+private:
+    
+    /** @todo */
+    spinwait_mutex& m_mutex;
+
+    /** @todo */
+    bool m_do_lock;
+
+};
+
+/** @todo */
+struct spinwait_shared_lock
+{
+public:
+    spinwait_shared_lock(spinwait_mutex& mutex, bool do_lock = true)
+        : m_mutex(mutex)
+        , m_do_lock(do_lock)
+    {
+        if (m_do_lock)
+        {
+            m_mutex.lock_shared();
+        }
+    }
+
+    ~spinwait_shared_lock()
+    {
+        if (m_do_lock)
+        {
+            m_mutex.unlock_shared();
+        }
+    }
+
+private:
+
+    /** @todo */
+    spinwait_mutex& m_mutex;
+
+    /** @todo */
+    bool m_do_lock;
+
+};
+
+/** @todo */
 template <typename data_type>
 struct multiple_writer_single_reader_list
 {
@@ -206,6 +323,31 @@ public:
             return *this;
         }
 
+        /** @todo */
+        bool remove()
+        {
+            // Remove first.
+            link* original = m_link;
+            link* next = m_link->next;
+
+            if (original->next != nullptr)
+            {
+                original->next->prev = original->prev;
+            }
+            if (original->prev != nullptr)
+            {
+                original->prev->next = original->next;
+            }
+            if (original == m_owner->m_head.load())
+            {
+                m_owner->m_head = original->next;
+            }
+
+            // Move onto next.
+            m_link = next;
+            return (m_link != nullptr);
+        }
+
     private:
 
         /** @todo */
@@ -250,9 +392,14 @@ public:
 public:
 
     /** @todo */
+    multiple_writer_single_reader_list()
+    {
+    }
+
+    /** @todo */
     void add(link* value, bool lock_required = true)
     {
-        optional_shared_lock<std::shared_timed_mutex> lock(m_lock, lock_required);
+        spinwait_shared_lock lock(m_lock, lock_required);
 
         while (true)
         {
@@ -283,7 +430,7 @@ public:
     /** @todo */
     void remove(link* value, bool lock_required = true)
     {
-        optional_shared_lock<std::shared_timed_mutex> lock(m_lock, lock_required);
+        spinwait_shared_lock lock(m_lock, lock_required);
 
         while (true)
         {
@@ -322,7 +469,7 @@ public:
     }
 
     /** @todo */
-    std::shared_timed_mutex& get_mutex()
+    spinwait_mutex& get_mutex()
     {
         return m_lock;
     }
@@ -330,7 +477,7 @@ public:
 private:
 
     /** @todo */
-    std::shared_timed_mutex m_lock;
+    spinwait_mutex m_lock;
 
     /** @todo */
     std::atomic<link*> m_head = nullptr;

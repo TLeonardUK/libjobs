@@ -89,7 +89,7 @@ result callback_scheduler::init(jobs::scheduler* scheduler, size_t max_callbacks
                 m_schedule_updated_cvar.wait_for(lock, std::chrono::milliseconds(time_till_next_callback));
             }
         }
-    }, "Latent Callback Scheduler");
+    }, "Latent Callback Scheduler", 0xFFFF);
 
     return result::success;
 }

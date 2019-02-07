@@ -45,6 +45,12 @@
 #	error Unknown or unimplemented platform
 #endif
 
+#if defined(NDEBUG)
+#   define JOBS_RELEASE_BUILD 
+#else
+#   define JOBS_DEBUG_BUILD 
+#endif
+
 #if defined(JOBS_PLATFORM_WINDOWS)
 #	define WIN32_LEAN_AND_MEAN  1
 #	define VC_EXTRALEAN 1

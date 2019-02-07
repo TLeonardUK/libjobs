@@ -487,8 +487,13 @@ bool job_handle::operator!=(const job_handle& rhs) const
     return !(*this == rhs);
 }
 
-profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
+profile_scope_internal::profile_scope_internal(jobs::profile_scope_type type, const char* tag)
 {
+    if (!scheduler::is_profiling_active())
+    {
+        return;
+    }
+
     internal::job_context* context = scheduler::get_active_job_context();
 
     if (context != nullptr)
@@ -499,8 +504,13 @@ profile_scope::profile_scope(jobs::profile_scope_type type, const char* tag)
     m_context = context;
 }
 
-profile_scope::~profile_scope()
+profile_scope_internal::~profile_scope_internal()
 {
+    if (!scheduler::is_profiling_active())
+    {
+        return;
+    }
+
     internal::job_context* context = scheduler::get_active_job_context();
    // assert(context != nullptr);
 

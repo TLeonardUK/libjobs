@@ -30,6 +30,10 @@ namespace jobs {
 namespace internal {
 
 counter_definition::counter_definition()
+#if defined(JOBS_PLATFORM_PS4)
+    : value_cvar(nullptr) // -_-. Why do sync-primitives's have to be named by default on ps4.
+    , value_cvar_mutex(nullptr)
+#endif
 {
     reset();
 }	
@@ -96,7 +100,7 @@ void counter_handle::decrease_ref()
 
 result counter_handle::wait_for(size_t value, timeout in_timeout)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::wait_for");
+    jobs_profile_scope(profile_scope_type::fiber, "counter::wait_for");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
@@ -107,80 +111,70 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
     // If we have a job context, go to sleep waiting on the value.
     if (context != nullptr)
     {
-        while (true)
+        assert(worker_context != nullptr);
+
+        volatile bool timeout_called = false;
+
+        // Put job to sleep.
         {
-            assert(worker_context != nullptr);
+            context->job_def->status = internal::job_status::waiting_on_counter;
+            context->job_def->wait_counter = *this;
+            context->job_def->wait_counter_value = value;
+            context->job_def->wait_counter_remove_value = false;
+            context->job_def->wait_counter_do_not_requeue = false;
 
-            volatile bool timeout_called = false;
-
-            // Put job to sleep.
+            if (!add_to_wait_list(context->job_def))
             {
-                profile_scope scope(profile_scope_type::fiber, "put to sleep");
+                return result::success;
+            }
+        }
 
-                std::shared_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
+        // Queue a wakeup.
+        size_t schedule_handle;
+        if (!in_timeout.is_infinite())
+        {
+            result res = m_scheduler->m_callback_scheduler.schedule(in_timeout, schedule_handle, [&]() {
 
-                // Try and consume value.
-                if (def.value == value)
+                // Do this atomatically to make sure we don't set it to pending after the scheduler 
+                // has already done that due to this event being signalled.
+                internal::job_status expected = internal::job_status::waiting_on_counter;
+                if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
                 {
-                    break;
+                    timeout_called = true;
+                    m_scheduler->requeue_job(context->job_def->index);
+                    m_scheduler->notify_job_available();
                 }
 
-                context->job_def->status = internal::job_status::waiting_on_counter;
-                context->job_def->wait_counter = *this;
-                context->job_def->wait_counter_value = value;
-                context->job_def->wait_counter_at_least_value = false;
-                add_to_wait_list(context->job_def);
-            }
+            });
 
-            // Queue a wakeup.
-            size_t schedule_handle;
-            if (!in_timeout.is_infinite())
+            // Failed to schedule a wakeup? Abort.
+            if (res != result::success)
             {
-                result res = m_scheduler->m_callback_scheduler.schedule(in_timeout, schedule_handle, [&]() {
-
-                    // Do this atomatically to make sure we don't set it to pending after the scheduler 
-                    // has already done that due to this event being signalled.
-                    internal::job_status expected = internal::job_status::waiting_on_counter;
-                    if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
-                    {
-                        timeout_called = true;
-                        m_scheduler->requeue_job(context->job_def->index);
-                        m_scheduler->notify_job_available();
-                    }
-
-                });
-
-                // Failed to schedule a wakeup? Abort.
-                if (res != result::success)
-                {
-                    remove_from_wait_list(context->job_def);
-
-                    context->job_def->status = internal::job_status::pending;
-                    return res;
-                }
+                remove_from_wait_list(context->job_def);
+                context->job_def->status = internal::job_status::pending;
+                return res;
             }
+        }
 
-            // Supress requeueing the job, we will do this when the callback returns.
-            m_scheduler->m_worker_job_supress_requeue = true;
+        // Supress requeueing the job, we will do this when the callback returns.
+        m_scheduler->m_worker_job_supress_requeue = true;
 
-            // Switch back to worker which will requeue fiber for execution later.			
-            m_scheduler->switch_context(*worker_context);
+        // Switch back to worker which will requeue fiber for execution later.			
+        m_scheduler->switch_context(*worker_context);
 
-            // Cleanup
-            remove_from_wait_list(context->job_def);
-            context->job_def->wait_counter = counter_handle();
+        // Cleanup
+        context->job_def->wait_counter = counter_handle();
 
-            // If we timed out, just escape here.
-            if (timeout_called)
-            {
-                return result::timeout;
-            }
+        // If we timed out, just escape here.
+        if (timeout_called)
+        {
+            return result::timeout;
+        }
 
-            // Cancel callback and clear our job handle.
-            if (!in_timeout.is_infinite())
-            {
-                m_scheduler->m_callback_scheduler.cancel(schedule_handle);
-            }
+        // Cancel callback and clear our job handle.
+        if (!in_timeout.is_infinite())
+        {
+            m_scheduler->m_callback_scheduler.cancel(schedule_handle);
         }
 
         return result::success;
@@ -192,18 +186,24 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
         internal::stopwatch timer;
         timer.start();
 
-        std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
-
-        printf("Waiting on value %zi\n", value);
-
-        // Keep looping until we manage to decrease the value.
-        while (true)
         {
-            if (def.value == value)
+            std::unique_lock<std::mutex> lock(def.value_cvar_mutex);
+
+            // Allocate a fake job to be waited on.
+            internal::job_definition fake_job(UINT32_MAX);
+            fake_job.status = internal::job_status::waiting_on_counter;
+            fake_job.wait_counter = *this;
+            fake_job.wait_counter_value = value;
+            fake_job.wait_counter_remove_value = false;
+            fake_job.wait_counter_do_not_requeue = true;
+
+            if (!add_to_wait_list(&fake_job))
             {
-                break;
+                return result::success;
             }
-            else
+
+            // Keep looping until we manage to decrease the value.
+            while (fake_job.status == internal::job_status::waiting_on_counter)
             {
                 if (in_timeout.is_infinite())
                 {
@@ -228,32 +228,9 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
     return result::success;
 }
 
-result counter_handle::add(size_t value)
-{
-    profile_scope scope(profile_scope_type::fiber, "counter::add");
-
-    internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
-
-    size_t changed_value = 0;
-
-    {
-        profile_scope scope(profile_scope_type::fiber, "lock & increment");
-
-        std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
-        def.value += value;
-        changed_value = def.value;
-
-        def.value_cvar.notify_all();
-
-        notify_value_changed(changed_value, false);
-    }
-
-    return result::success;
-}
-
 result counter_handle::remove(size_t value, timeout in_timeout)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::remove");
+    jobs_profile_scope(profile_scope_type::fiber, "counter::remove");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
@@ -264,93 +241,73 @@ result counter_handle::remove(size_t value, timeout in_timeout)
     // If we have a job context, go to sleep waiting on the value.
     if (context != nullptr)
     {
-        while (true)
+        assert(worker_context != nullptr);
+
+        volatile bool timeout_called = false;
+
+        // Put job to sleep.
         {
-            assert(worker_context != nullptr);
+            context->job_def->status = internal::job_status::waiting_on_counter;
+            context->job_def->wait_counter = *this;
+            context->job_def->wait_counter_value = value;
+            context->job_def->wait_counter_remove_value = true;
+            context->job_def->wait_counter_do_not_requeue = false;
 
-            volatile bool timeout_called = false;
-
-            // Put job to sleep.
+            if (!add_to_wait_list(context->job_def))
             {
-                profile_scope scope(profile_scope_type::fiber, "put to sleep");
-
-                std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
-
-                // Try and consume value.
-                // this is problematic since we already have a lock above.
-                if (try_remove_value(value))
-                {
-                    break;
-                }
-
-                context->job_def->status = internal::job_status::waiting_on_counter;
-                context->job_def->wait_counter = *this;
-                context->job_def->wait_counter_value = value;
-                context->job_def->wait_counter_at_least_value = true;
-                add_to_wait_list(context->job_def);
+                return result::success;
             }
-
-            // Queue a wakeup.
-            size_t schedule_handle;
-            if (!in_timeout.is_infinite())
-            {
-                result res = m_scheduler->m_callback_scheduler.schedule(in_timeout, schedule_handle, [&]() {
-
-                    // Do this atomatically to make sure we don't set it to pending after the scheduler 
-                    // has already done that due to this event being signalled.
-                    internal::job_status expected = internal::job_status::waiting_on_counter;
-                    if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
-                    {
-                        timeout_called = true;
-                        m_scheduler->requeue_job(context->job_def->index);
-                        m_scheduler->notify_job_available();
-                    }
-
-                });
-
-                // Failed to schedule a wakeup? Abort.
-                if (res != result::success)
-                {
-                    remove_from_wait_list(context->job_def);
-                    context->job_def->status = internal::job_status::pending;
-                    return res;
-                }
-            }
-
-            // Supress requeueing the job, we will do this when the callback returns.
-            m_scheduler->m_worker_job_supress_requeue = true;
-
-            // Switch back to worker which will requeue fiber for execution later.			
-            m_scheduler->switch_context(*worker_context);
-
-            // Cleanup
-            remove_from_wait_list(context->job_def);
-            context->job_def->wait_counter = counter_handle();
-
-            // If we timed out, just escape here.
-            if (timeout_called)
-            {
-                return result::timeout;
-            }
-
-            // Cancel callback and clear our job handle.
-            if (!in_timeout.is_infinite())
-            {
-                m_scheduler->m_callback_scheduler.cancel(schedule_handle);
-            }
-
-            // Try and consume value.
-            {
-                std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
-
-                if (!try_remove_value(value))
-                {
-                    continue;
-                }
-            }
-
-            return result::success;
         }
+
+        // Queue a wakeup.
+        size_t schedule_handle;
+        if (!in_timeout.is_infinite())
+        {
+            result res = m_scheduler->m_callback_scheduler.schedule(in_timeout, schedule_handle, [&]() {
+
+                // Do this atomatically to make sure we don't set it to pending after the scheduler 
+                // has already done that due to this event being signalled.
+                internal::job_status expected = internal::job_status::waiting_on_counter;
+                if (context->job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
+                {
+                    timeout_called = true;
+                    m_scheduler->requeue_job(context->job_def->index);
+                    m_scheduler->notify_job_available();
+                }
+
+            });
+
+            // Failed to schedule a wakeup? Abort.
+            if (res != result::success)
+            {
+                remove_from_wait_list(context->job_def);
+                context->job_def->status = internal::job_status::pending;
+                return res;
+            }
+        }
+
+        // Supress requeueing the job, we will do this when the callback returns.
+        m_scheduler->m_worker_job_supress_requeue = true;
+
+        // Switch back to worker which will requeue fiber for execution later.			
+        m_scheduler->switch_context(*worker_context);
+
+        // Cleanup
+        context->job_def->wait_counter = counter_handle();
+
+        // If we timed out, just escape here.
+        if (timeout_called)
+        {
+            return result::timeout;
+        }
+
+        // Cancel callback and clear our job handle.
+        if (!in_timeout.is_infinite())
+        {
+            m_scheduler->m_callback_scheduler.cancel(schedule_handle);
+        }
+
+        return result::success;
     }
 
     // If no job-context we have to do a blocking wait.
@@ -361,80 +318,51 @@ result counter_handle::remove(size_t value, timeout in_timeout)
 
         size_t changed_value = 0;
 
-       // printf("Waiting on remove %zi\n", value);
-
         {
-            std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
+            std::unique_lock<std::mutex> lock(def.value_cvar_mutex);
+
+            // Allocate a fake job to be waited on.
+            internal::job_definition fake_job(UINT32_MAX);
+            fake_job.status = internal::job_status::waiting_on_counter;
+            fake_job.wait_counter = *this;
+            fake_job.wait_counter_value = value;
+            fake_job.wait_counter_remove_value = true;
+            fake_job.wait_counter_do_not_requeue = true;
+
+            if (!add_to_wait_list(&fake_job))
+            {
+                return result::success;
+            }
 
             // Keep looping until we manage to decrease the value.
-            while (true)
+            while (fake_job.status == internal::job_status::waiting_on_counter)
             {
-                if (def.value >= value)
+                if (in_timeout.is_infinite())
                 {
-                   // printf("Got value %zi\n", value);
-                    def.value -= value;
-                    changed_value = def.value;
-
-                    def.value_cvar.notify_all();
-
-                    break;
+                    def.value_cvar.wait(lock);
                 }
                 else
                 {
-                    if (in_timeout.is_infinite())
+                    size_t ms_remaining = in_timeout.duration - timer.get_elapsed_ms();
+                    if (ms_remaining > 0)
                     {
-                        def.value_cvar.wait(lock);
+                        def.value_cvar.wait_for(lock, std::chrono::milliseconds(ms_remaining));
                     }
                     else
                     {
-                        size_t ms_remaining = in_timeout.duration - timer.get_elapsed_ms();
-                        if (ms_remaining > 0)
-                        {
-                            def.value_cvar.wait_for(lock, std::chrono::milliseconds(ms_remaining));
-                        }
-                        else
-                        {
-                            return result::timeout;
-                        }
+                        return result::timeout;
                     }
                 }
             }
-
-            notify_value_changed(changed_value, false);
         }
     }
 
     return result::success;
 }
 
-bool counter_handle::try_remove_value(size_t value)
-{
-    profile_scope scope(profile_scope_type::fiber, "counter::try_remove_value");
-
-    internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
-
-    size_t changed_value = 0;
-
-    if (def.value >= value)
-    {
-        def.value -= value;
-        changed_value = def.value;
-
-        def.value_cvar.notify_all();
-    }
-    else
-    {
-        return false;
-    }
-
-    notify_value_changed(changed_value, false);
-
-    return true;
-}
-
 result counter_handle::get(size_t& output)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::get");
+    jobs_profile_scope(profile_scope_type::fiber, "counter::get");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
@@ -443,70 +371,133 @@ result counter_handle::get(size_t& output)
     return result::success;
 }
 
+result counter_handle::add(size_t value)
+{
+    modify_value(value, false);
+    return result::success;
+}
+
 result counter_handle::set(size_t value)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::set");
+    modify_value(value, true);
+    return result::success;
+}
+
+bool counter_handle::modify_value(size_t new_value, bool absolute, bool subtract, bool lock_required)
+{
+    jobs_profile_scope(profile_scope_type::fiber, "counter::modify_value");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     {
-        std::unique_lock<std::shared_timed_mutex> lock(def.wait_list.get_mutex());
-        def.value = value;
-        def.value_cvar.notify_all();
+        internal::spinwait_shared_lock lock(def.wait_list.get_mutex(), lock_required);
 
-        notify_value_changed(value, false);
+        size_t changed_value = 0;
+        if (absolute)
+        {
+            changed_value = (def.value = new_value);
+        }
+        else
+        {
+            if (subtract)
+            {
+                if (def.value >= new_value)
+                {
+                    changed_value = (def.value -= new_value);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                changed_value = (def.value += new_value);
+            }
+        }
+
+        notify_value_changed(changed_value, false);
     }
 
-    return result::success;
+    return true;
 }
 
-void counter_handle::add_to_wait_list(internal::job_definition* job_def)
+bool counter_handle::add_to_wait_list(internal::job_definition* job_def)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::add_to_wait_list");
+    jobs_profile_scope(profile_scope_type::fiber, "counter::add_to_wait_list");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
     
-    // Add to list.    
-    //printf("added: %p\n", job_def);
-    job_def->wait_counter_list_link.value = job_def;
-    def.wait_list.add(&job_def->wait_counter_list_link, false);
+    if (job_def->wait_counter_remove_value)
+    {
+        internal::spinwait_lock lock(def.wait_list.get_mutex());
+
+        // Value high enough to remove? We don't need to wait. 
+        if (modify_value(job_def->wait_counter_value, false, true, false))
+        {
+            job_def->status = internal::job_status::pending;
+            job_def->wait_counter = counter_handle();
+
+            return false;
+        }
+
+        job_def->wait_counter_list_link.value = job_def;
+        def.wait_list.add(&job_def->wait_counter_list_link, false);
+    }
+    else
+    {
+        internal::spinwait_shared_lock lock(def.wait_list.get_mutex());
+
+        // Is value equal? We don't need to wait.
+        if (def.value == job_def->wait_counter_value)
+        {
+            job_def->status = internal::job_status::pending;
+            job_def->wait_counter = counter_handle();
+
+            return false;
+        }
+
+        job_def->wait_counter_list_link.value = job_def;
+        def.wait_list.add(&job_def->wait_counter_list_link, false);
+    }
+
+    return true;
 }
 
 void counter_handle::remove_from_wait_list(internal::job_definition* job_def)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::remove_from_wait_list");
+    jobs_profile_scope(profile_scope_type::fiber, "counter::remove_from_wait_list");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
-
-    //printf("removed: %p\n", job_def);
 
     def.wait_list.remove(&job_def->wait_counter_list_link);
 }
 
 void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
 {
-    profile_scope scope(profile_scope_type::fiber, "counter::notify_value_changed");
-
-    //printf("notify_value_changed: %zi\n", new_value);
+    jobs_profile_scope(profile_scope_type::fiber, "counter::notify_value_changed");
 
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     // Go through wait list and mark all jobs as ready to resume if their criteria is met.
     size_t signalled_job_count = 0;
+    size_t signalled_no_requeue_job_count = 0;
+
+    //printf("Value changed to %zi\n", new_value);
 
     {
-        profile_scope scope(profile_scope_type::fiber, "wake up waiting");
+        jobs_profile_scope(profile_scope_type::fiber, "wake up waiting");
 
         internal::multiple_writer_single_reader_list<internal::job_definition*>::iterator iter;
-        for (def.wait_list.iterate(iter, lock_required); iter; iter++)
+        for (def.wait_list.iterate(iter, lock_required); iter; )
         {
             bool signal = false;
 
             internal::job_definition* job_def = iter.value();
 
-            if (job_def->wait_counter_at_least_value)
+            if (job_def->wait_counter_remove_value)
             {
-                signal = (new_value >= job_def->wait_counter_value);
+                signal = modify_value(job_def->wait_counter_value, false, true, false);
             }
             else
             {
@@ -515,26 +506,40 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
 
             if (signal)
             {
-                //printf("woke up: %p\n", job_def);
-
                 internal::job_status expected = internal::job_status::waiting_on_counter;
                 if (job_def->status.compare_exchange_strong(expected, internal::job_status::pending))
                 {
-                    m_scheduler->requeue_job(job_def->index);
-                    signalled_job_count++;
+                    if (!job_def->wait_counter_do_not_requeue)
+                    {
+                        //printf("Completed real job\n");
+                        m_scheduler->requeue_job(job_def->index);
+                        signalled_job_count++;
+                    }
+                    else
+                    {
+                        //printf("Completed thread job\n");
+                        signalled_no_requeue_job_count++;
+                    }
+
+                    iter.remove();
+                    continue;
                 }
             }
+
+            iter++;
         }
     }
 
     if (signalled_job_count > 0)
     {
-        profile_scope scope(profile_scope_type::fiber, "signal worker threads");
-
-        //printf("Signalled %i jobs due to change to %zi.\n", signalled_job_count, new_value);
-
-        // Wake up worker threads.
+        jobs_profile_scope(profile_scope_type::fiber, "signal worker threads");
         m_scheduler->notify_job_available();
+    }
+
+    if (signalled_no_requeue_job_count > 0)
+    {
+        jobs_profile_scope(profile_scope_type::fiber, "signal waiting threads");
+        def.value_cvar.notify_all();
     }
 }
 

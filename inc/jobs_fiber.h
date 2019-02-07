@@ -97,7 +97,7 @@ public:
      *  so any worker threads dealing with fibers need to first be converted. Which is done using
      *  this function.
      */
-    static fiber convert_thread_to_fiber();
+    static void convert_thread_to_fiber(fiber& result);
 
 
     /**
@@ -131,10 +131,13 @@ private:
     /** User defined entry point to execute when the fiber is run. */
     fiber_entry_point m_entry_point;
 
+    /** Stack space allocated to fiber context. */
+    bool m_is_thread = false;
+
 #if defined(JOBS_PLATFORM_WINDOWS)
 
     /** Handle of platform defined fiber. */
-    LPVOID m_fiber_handle;
+    LPVOID m_fiber_handle = nullptr;
 
 #elif defined(JOBS_PLATFORM_PS4)
 
@@ -147,8 +150,6 @@ private:
     /** Stack space allocated to fiber context. */
     void* m_fiber_context;
 
-    /** Stack space allocated to fiber context. */
-    bool m_is_thread = false;
 
 #endif
 

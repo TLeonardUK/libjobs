@@ -68,10 +68,11 @@ public:
      *
      * \param entry_point Function that should be run when the thread starts.
      * \param name Contextual name of this thread to show in debugger.
+     * \param core_affinity Mask of which cores this thread can execute on.
      *
      * \return Value indicating the success of this function.
      */
-    result init(const thread_entry_point& entry_point, const char* name);
+    result init(const thread_entry_point& entry_point, const char* name, size_t core_affinity);
 
     /**
      * \brief Blocks until thread completes execution.

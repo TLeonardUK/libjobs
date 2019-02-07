@@ -282,7 +282,10 @@ public:
     size_t wait_counter_value;
 
     /** @todo */
-    bool wait_counter_at_least_value;
+    bool wait_counter_remove_value;
+
+    /** @todo */
+    bool wait_counter_do_not_requeue;
 
     /** @todo */
     multiple_writer_single_reader_list<internal::job_definition*>::link wait_counter_list_link;
@@ -380,11 +383,18 @@ public:
 
 }; /* namespace internal */
 
+#if defined(JOBS_DEBUG_BUILD)
+/** @todo */
+#define jobs_profile_scope(type, tag) ::jobs::profile_scope_internal _profile_scope__##__LINE__(type, tag);
+#else
+#define jobs_profile_scope(type, tag)
+#endif
+
 /**
  * Simple RAII type that enters a profile scope on construction and exits it
  * on destruction.
  */
-class profile_scope
+class profile_scope_internal
 {
 private:
     internal::job_context* m_context = nullptr;
@@ -392,10 +402,11 @@ private:
 public:
 
     /** @todo */
-    profile_scope(jobs::profile_scope_type type, const char* tag);
+    profile_scope_internal(jobs::profile_scope_type type, const char* tag);
 
     /** @todo */
-    ~profile_scope();
+    ~profile_scope_internal();
+
 };
 
 }; /* namespace jobs */

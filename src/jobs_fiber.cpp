@@ -44,7 +44,7 @@ void fiber::destroy()
 {
 #if defined(JOBS_PLATFORM_WINDOWS)
 
-    if (m_fiber_handle != nullptr)
+    if (m_fiber_handle != nullptr && !m_is_thread)
     {
         DeleteFiber(m_fiber_handle);
         m_fiber_handle = nullptr;
@@ -52,7 +52,7 @@ void fiber::destroy()
 
 #elif defined(JOBS_PLATFORM_PS4)
 
-    if (m_fiber_handle_created)
+    if (m_fiber_handle_created && !m_is_thread)
     {
         sceFiberFinalize(&m_fiber_handle);
         m_fiber_handle_created = false;
@@ -125,19 +125,18 @@ result fiber::init(size_t stack_size, const fiber_entry_point& entry_point, cons
     return result::success;
 }
 
-fiber fiber::convert_thread_to_fiber()
+void fiber::convert_thread_to_fiber(fiber& result)
 {
-    fiber new_fiber;
-    new_fiber.m_entry_point = nullptr;
+    result.m_entry_point = nullptr;
+    result.m_is_thread = true;
 
 #if defined(JOBS_PLATFORM_WINDOWS)
 
-    new_fiber.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);;
+    result.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
 
 #elif defined(JOBS_PLATFORM_PS4)
 
-    // @todo
-    new_fiber.m_is_thread = true;
+    // Nothing to do.
 
 #elif defined(JOBS_PLATFORM_SWITCH)
 
@@ -152,8 +151,6 @@ fiber fiber::convert_thread_to_fiber()
 #	error Unimplemented platform
 
 #endif
-
-    return new_fiber;
 }
 
 void fiber::convert_fiber_to_thread()
