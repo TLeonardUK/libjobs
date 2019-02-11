@@ -20,13 +20,16 @@
 */
 
 #include "jobs_thread.h"
+#include "jobs_utils.h"
 
 #include <cassert>
 #include <cstdlib>
 
 #if defined(JOBS_PLATFORM_WINDOWS)
-#include <windows.h>
-#include <processthreadsapi.h>
+#   include <windows.h>
+#   include <processthreadsapi.h>
+#elif defined(JOBS_PLATFORM_SWITCH)
+#   include <nn/os.h>
 #endif
 
 namespace jobs {
@@ -57,10 +60,31 @@ result thread::init(const thread_entry_point& entry_point, const char* name, siz
     });
 
 #elif defined(JOBS_PLATFORM_PS4)
-    
-    std::thread new_thread([entry_point, name, core_affinity]() {
-        scePthreadRename(scePthreadSelf(), name);
+
+    char name_storage[128];
+    strncpy(name_storage, name, 128);
+    name_storage[127] = '\0';
+
+    std::thread new_thread([=]() {
+        scePthreadRename(scePthreadSelf(), name_storage);
         scePthreadSetaffinity(scePthreadSelf(), (SceKernelCpumask)core_affinity);
+        entry_point();
+    });
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    char name_storage[nn::os::ThreadNameLengthMax];
+    strncpy(name_storage, name, nn::os::ThreadNameLengthMax);
+    name_storage[nn::os::ThreadNameLengthMax - 1] = '\0';
+
+    // Filter affinity to only valid core indices or switch will complain.
+    core_affinity = core_affinity & nn::os::GetThreadAvailableCoreMask();
+
+    int ideal_core = jobs::internal::getFirstSetBitPos(core_affinity) - 1;
+
+    std::thread new_thread([=]() {
+        nn::os::SetThreadName(nn::os::GetCurrentThread(), name_storage);
+        nn::os::SetThreadCoreMask(nn::os::GetCurrentThread(), ideal_core, core_affinity);
         entry_point();
     });
 

@@ -271,6 +271,9 @@ public:
     result create_counter(counter_handle& instance);
 
     /** @todo */
+    result dispatch_batch(job_handle* job_array, size_t count);
+
+    /** @todo */
     result wait_until_idle(timeout wait_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
 
     /** @todo */
@@ -365,24 +368,31 @@ protected:
     friend class counter_handle;
     friend class internal::job_context;
     friend class internal::callback_scheduler;
+    friend class profile_scope_internal;
 
     /** @todo */
-    internal::job_definition& get_job_definition(size_t index);
+    JOBS_FORCE_INLINE internal::job_definition& get_job_definition(size_t index)
+    {
+        return *m_job_pool.get_index(index);
+    }
 
     /** @todo */
     void free_job(size_t index);
 
     /** @todo */
-    void increase_job_ref_count(size_t index);
+    JOBS_FORCE_INLINE void increase_job_ref_count(size_t index);
 
     /** @todo */
-    void decrease_job_ref_count(size_t index);
+    JOBS_FORCE_INLINE void decrease_job_ref_count(size_t index);
 
     /** @todo */
     result dispatch_job(size_t index);
 
     /** @todo */
     result requeue_job(size_t index);
+
+    /** @todo */
+    result requeue_job_batch(job_handle* job_array, size_t count, size_t job_queues);
 
     /** @todo */
     bool get_next_job(size_t& job_index, priority priorities, bool can_block);
@@ -421,13 +431,19 @@ protected:
     void switch_context(internal::job_context& new_context);
 
     /** @todo */
+    void return_to_worker(internal::job_context& new_context, bool supress_requeue);
+
+    /** @todo */
     result alloc_scope(internal::profile_scope_definition*& output);
 
     /** @todo */
     result free_scope(internal::profile_scope_definition* scope);
 
     /** @todo */
-    internal::counter_definition& get_counter_definition(size_t index);
+    JOBS_FORCE_INLINE internal::counter_definition& get_counter_definition(size_t index)
+    {
+        return *m_counter_pool.get_index(index);
+    }
 
     /** @todo */
     void free_counter(size_t index);
@@ -439,7 +455,7 @@ protected:
     void decrease_counter_ref_count(size_t index);
 
     /** @todo */
-    void notify_job_available();
+    void notify_job_available(size_t job_count = 1);
 
     /** @todo */
     void notify_job_complete();
@@ -471,6 +487,14 @@ private:
      */
     bool execute_next_job(priority job_priorities, bool can_block);
 
+    /** @todo */
+    // This is set to force no-inlne to ensure thread_local variables read inside
+    // it are not cached on the stack between invocation, which can be problematic
+    // with fibers which may return/re-enter at unknown points, which can
+    // cause the compiler to cache variables for incorrect lifetimes. This is not
+    // needed on windows as we use the /GT flag to enable fiber-safe optimizations.
+    JOBS_FORCE_NO_INLINE void execute_fiber_job();
+
 private:  
 
     /** Maximum number of threads pools that can be added. */
@@ -496,6 +520,9 @@ private:
 
     /** Array of thread pools that have been added. */
     thread_pool m_thread_pools[max_thread_pools];
+
+    /** Total number of worker threads. */
+    size_t m_worker_count = 0;
 
     /** Number of fiber pools that have been added. */
     size_t m_fiber_pool_count = 0;
@@ -557,6 +584,9 @@ private:
     /** Number of jobs that have been dispatched but not completed yet. */
     std::atomic<size_t> m_active_job_count{ 0 };
 
+    /** Number of jobs waiting in queues to be executed. */
+    std::atomic<size_t> m_available_jobs{ 0 };
+
     /** Maximum number of dependencies jobs can have. */
     size_t m_max_dependencies = 100;
 
@@ -588,23 +618,16 @@ private:
 
 #endif
 
-    /** Thread local storage for a worker threads current job. */
-    static thread_local size_t m_worker_job_index;
+    class worker_thread_state;
 
-    /** Thread local storage for flagging of job completed. */
-    static thread_local bool m_worker_job_completed;
+    /** Array of worker threads indexed by m_worker_job_index. */
+    worker_thread_state* m_worker_thread_states = nullptr;
 
-    /** Thread local storage for flagging if a job should not be requeued if it returns without completing (if it will be requeued elsewhere). */
-    static thread_local bool m_worker_job_supress_requeue;
+    /** Scheduler that owns the current worker thread */
+    static thread_local scheduler* m_worker_thread_scheduler;
 
-    /** Thread local storage for the workers job context. */
-    static thread_local internal::job_context m_worker_job_context;
-
-    /** Thread local storage for the workers active job context. */
-    static thread_local internal::job_context* m_worker_active_job_context;
-
-    /** Thread local cache for allocating profile scopes speedily. */
-    static thread_local internal::fixed_queue<internal::profile_scope_definition*, 32> m_profile_scope_thread_local_cache;
+    /** Index of the current worker thread. */
+    static thread_local worker_thread_state* m_worker_thread_state;
 
     /** Determines if profiling is active or not. */
     static bool m_profiling_active;

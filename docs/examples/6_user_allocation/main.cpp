@@ -39,7 +39,7 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    printf("%s", message);
+    JOBS_PRINTF("%s", message);
 }
 
 // User-defined memory allocation function, in this example this is just a trampoline 
@@ -53,7 +53,7 @@ void* user_alloc(size_t size, size_t alignment)
     void* ptr = memalign(alignment, size);
 #endif
 
-    printf("Allocated %zi bytes (%zi alignment) @ 0x%p\n", size, alignment, ptr);
+    JOBS_PRINTF("Allocated %zi bytes (%zi alignment) @ 0x%p\n", size, alignment, ptr);
     return ptr;
 }
 
@@ -62,7 +62,7 @@ void* user_alloc(size_t size, size_t alignment)
 // own allocators.
 void user_free(void* ptr)
 {
-    printf("Freed 0x%p\n", ptr);
+    JOBS_PRINTF("Freed 0x%p\n", ptr);
 
 #if defined(JOBS_PLATFORM_WINDOWS)
     _aligned_free(ptr);
@@ -105,7 +105,7 @@ void example()
     job_1.set_stack_size(16 * 1024);
     job_1.set_priority(jobs::priority::low);
     job_1.set_work([=]() {
-        printf("Example job executed\n");
+        JOBS_PRINTF("Example job executed\n");
     });
 
     // Dispatch job.
@@ -114,7 +114,7 @@ void example()
     // Wait for job to complete.
     scheduler.wait_until_idle();
 
-    printf("All jobs completed.\n");
+    JOBS_PRINTF("All jobs completed.\n");
 
     return;
 }
@@ -123,5 +123,5 @@ void jobsMain()
 {
     example();
 
-    printf("All resources freed.\n");
+    JOBS_PRINTF("All resources freed.\n");
 }

@@ -43,16 +43,16 @@ void jobsMain();
 #if defined(JOBS_PLATFORM_SWITCH)
 extern "C" void nnMain()
 {
-    printf("==== libjobs example ====\n");
+    JOBS_PRINTF("==== libjobs example ====\n");
     jobsMain();
-    printf("Finished\n");
+    JOBS_PRINTF("Finished\n");
 }
 #else
 int main()
 {
-    printf("==== libjobs example ====\n");
+    JOBS_PRINTF("==== libjobs example ====\n");
     jobsMain();
-    printf("Finished\n");
+    JOBS_PRINTF("Finished\n");
     return 0;
 }
 #endif

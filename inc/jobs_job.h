@@ -185,6 +185,9 @@ public:
     result set_priority(priority job_priority);
 
     /** @todo */
+    result set_completion_counter(const counter_handle& counter);
+
+    /** @todo */
     result clear_dependencies();
 
     /** @todo */
@@ -268,6 +271,9 @@ public:
 
     /** @todo */
     priority job_priority;
+
+    /** @todo */
+    counter_handle completion_counter;
 
     /** @todo */
     std::atomic<job_status> status;
@@ -383,11 +389,11 @@ public:
 
 }; /* namespace internal */
 
-#if defined(JOBS_DEBUG_BUILD)
+#if defined(JOBS_USE_PROFILE_MARKERS)
 /** @todo */
-#define jobs_profile_scope(type, tag) ::jobs::profile_scope_internal _profile_scope__##__LINE__(type, tag);
+#define jobs_profile_scope(...) ::jobs::profile_scope_internal _profile_scope__##__LINE__(__VA_ARGS__);
 #else
-#define jobs_profile_scope(type, tag)
+#define jobs_profile_scope(...)
 #endif
 
 /**
@@ -398,11 +404,12 @@ class profile_scope_internal
 {
 private:
     internal::job_context* m_context = nullptr;
+    jobs::scheduler* m_scheduler = nullptr;
 
 public:
 
     /** @todo */
-    profile_scope_internal(jobs::profile_scope_type type, const char* tag);
+    profile_scope_internal(jobs::profile_scope_type type, const char* tag, jobs::scheduler* scheduler = nullptr);
 
     /** @todo */
     ~profile_scope_internal();

@@ -65,7 +65,7 @@ void jobsMain()
     // Sets the actual work that is executed when the work is run. This is held as
     // and std::function, so lambda's/function-ptr's all work fine.
     job_1.set_work([=]() {
-        printf("Example job executed\n");
+        JOBS_PRINTF("Example job executed\n");
     });
 
     // Sets the stack-size the job needs to run. The size of this is heavily dependent on what 
@@ -85,5 +85,5 @@ void jobsMain()
     // on individual jobs or events if you need to (show in future examples).
     scheduler.wait_until_idle();
 
-    printf("All jobs completed.\n");
+    JOBS_PRINTF("All jobs completed.\n");
 }

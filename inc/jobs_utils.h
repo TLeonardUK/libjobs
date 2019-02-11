@@ -36,6 +36,7 @@
 #include <atomic>
 #include <shared_mutex>
 #include <cassert>
+#include <cmath>
 #if defined(JOBS_PLATFORM_PS4)
 // For _mm_pause intrinsic
 #include <x86intrin.h>
@@ -47,21 +48,15 @@
 /** @todo */
 #define JOBS_MAX(x, y) ((x) > (y) ? (x) : (y))
 
-/** @todo */
-/*
-#if defined(JOBS_PLATFORM_SWITCH)
-#define JOBS_YIELD() __asm__ __volatile__ ("yield")
-#else
-#define JOBS_YIELD() _mm_pause()
-#endif
-*/
-
-// Not sure if this is actually beneficial from what I've read
-// so I'm disabling it for the time being as it saves some amount of time.
-#define JOBS_YIELD()
-
 namespace jobs {
 namespace internal {
+
+/** @todo */
+template <typename data_type>
+data_type getFirstSetBitPos(data_type n)
+{
+    return log2(n & -n) + 1;
+}
 
 /** @todo */
 template <typename mutex_type>
@@ -159,7 +154,7 @@ struct spinwait_mutex
 public:
 
     /** @todo */
-    void lock()
+    JOBS_FORCE_INLINE void lock()
     {
         while (true)
         {
@@ -176,19 +171,19 @@ public:
     }
 
     /** @todo */
-    void unlock()
+    JOBS_FORCE_INLINE void unlock()
     {
         m_locked = 0;
     }
 
     /** @todo */
-    void lock_shared()
+    JOBS_FORCE_INLINE void lock_shared()
     {
         lock();
     }
 
     /** @todo */
-    void unlock_shared()
+    JOBS_FORCE_INLINE void unlock_shared()
     {
         unlock();
     }
@@ -305,26 +300,26 @@ public:
         }
 
         /** @todo */
-        data_type value()
+        JOBS_FORCE_INLINE data_type value()
         {
             return m_link->value;
         }
 
         /** @todo */
-        operator bool() const
+        JOBS_FORCE_INLINE operator bool() const
         {
             return m_link != nullptr;
         }
 
         /** @todo */
-        iterator& operator++(int)
+        JOBS_FORCE_INLINE iterator& operator++(int)
         { 
             next();
             return *this;
         }
 
         /** @todo */
-        bool remove()
+        JOBS_FORCE_INLINE bool remove()
         {
             // Remove first.
             link* original = m_link;
@@ -351,7 +346,7 @@ public:
     private:
 
         /** @todo */
-        bool start(multiple_writer_single_reader_list* owner, bool lock_required)
+        JOBS_FORCE_INLINE bool start(multiple_writer_single_reader_list* owner, bool lock_required)
         {
             assert(m_locked == false);
 
@@ -368,7 +363,7 @@ public:
         }
 
         /** @todo */
-        bool next()
+        JOBS_FORCE_INLINE bool next()
         {
             m_link = m_link->next;
             return (m_link != nullptr);
@@ -397,7 +392,7 @@ public:
     }
 
     /** @todo */
-    void add(link* value, bool lock_required = true)
+    JOBS_FORCE_INLINE void add(link* value, bool lock_required = true)
     {
         spinwait_shared_lock lock(m_lock, lock_required);
 
@@ -428,7 +423,7 @@ public:
     }
 
     /** @todo */
-    void remove(link* value, bool lock_required = true)
+    JOBS_FORCE_INLINE void remove(link* value, bool lock_required = true)
     {
         spinwait_shared_lock lock(m_lock, lock_required);
 
@@ -463,13 +458,13 @@ public:
     }
 
     /** @todo */
-    bool iterate(iterator& iter, bool lock_required = true)
+    JOBS_FORCE_INLINE bool iterate(iterator& iter, bool lock_required = true)
     {        
         return iter.start(this, lock_required);
     }
 
     /** @todo */
-    spinwait_mutex& get_mutex()
+    JOBS_FORCE_INLINE spinwait_mutex& get_mutex()
     {
         return m_lock;
     }
@@ -524,7 +519,7 @@ public:
     }
 
     /** @todo */
-    result pop(data_type& result, bool can_block = false)
+    JOBS_FORCE_INLINE result pop(data_type& result, bool can_block = false)
     {
         while (true)
         {
@@ -560,7 +555,7 @@ public:
     }
 
     /** @todo */
-    result push(data_type value, bool can_block = true)
+    JOBS_FORCE_INLINE result push(data_type value, bool can_block = true)
     {
         while (true)
         {
@@ -596,13 +591,54 @@ public:
     }
 
     /** @todo */
-    size_t count()
+    JOBS_FORCE_INLINE result push_batch(data_type* buffer, size_t stride, size_t count, bool can_block = true)
+    {
+        while (true)
+        {
+            int64_t old_head = m_head;
+            int64_t new_head = old_head + count;
+
+            int64_t diff = (new_head - m_tail);
+            if (diff > m_capacity)
+            {
+                if (can_block)
+                {
+                    continue;
+                }
+                else
+                {
+                    return result::maximum_exceeded;
+                }
+            }
+
+            if (m_uncomitted_head.compare_exchange_strong(old_head, new_head))
+            {
+                for (size_t i = 0; i < count; i++)
+                {
+                    data_type* ptr = reinterpret_cast<data_type*>(reinterpret_cast<char*>(buffer) + (stride * i));
+                    m_buffer[(old_head + i) % m_capacity] = *ptr;
+                }
+
+                m_head = m_uncomitted_head;
+                break;
+            }
+            else
+            {
+                JOBS_YIELD();
+            }
+        }
+
+        return result::success;
+    }
+
+    /** @todo */
+    JOBS_FORCE_INLINE size_t count()
     {
         return (size_t)(m_head - m_tail);
     }
 
     /** @todo */
-    bool is_empty()
+    JOBS_FORCE_INLINE bool is_empty()
     {
         return (m_head == m_tail);
     }
@@ -646,7 +682,7 @@ public:
     }
 
     /** @todo */
-    result pop(data_type& result)
+    JOBS_FORCE_INLINE result pop(data_type& result) volatile
     {
         int64_t old_tail = m_tail;
         int64_t new_tail = m_tail + 1;
@@ -664,7 +700,7 @@ public:
     }
 
     /** @todo */
-    result push(data_type value)
+    JOBS_FORCE_INLINE result push(data_type value) volatile
     {
         int64_t old_head = m_head;
         int64_t new_head = old_head + 1;
@@ -682,13 +718,13 @@ public:
     }
 
     /** @todo */
-    size_t count()
+    JOBS_FORCE_INLINE size_t count()
     {
         return (size_t)(m_head - m_tail);
     }
 
     /** @todo */
-    bool is_empty()
+    JOBS_FORCE_INLINE  bool is_empty()
     {
         return (m_head == m_tail);
     }
@@ -785,7 +821,6 @@ public:
 
         for (int i = 0; i < capacity; i++)
         {
-            m_free_count++;
             m_free_queue.push(i);
         }
 
@@ -793,45 +828,43 @@ public:
     }
 
     /** @todo */
-    result alloc(size_t& output)
+    JOBS_FORCE_INLINE result alloc(size_t& output)
     {
-        m_free_count--;
         return m_free_queue.pop(output, true);
     }
 
     /** @todo */
-    result free(data_type* object)
+    JOBS_FORCE_INLINE result free(data_type* object)
     {
         size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
 
-#if !defined(NDEBUG)
+#if defined(JOBS_DEBUG_BUILD)
         memset(m_objects + index, 0xAB, sizeof(data_type));
 #endif
 
-        m_free_count++;
         return m_free_queue.push(index);
     }
 
     /** @todo */
-    result free(size_t index)
+    JOBS_FORCE_INLINE result free(size_t index)
     {
         return m_free_queue.push(index);
     }
 
     /** @todo */
-    data_type* get_index(size_t index)
+    JOBS_FORCE_INLINE data_type* get_index(size_t index)
     {
         return &m_objects[index];
     }
 
     /** @todo */
-    size_t count()
+    JOBS_FORCE_INLINE size_t count()
     {
         return m_capacity - m_free_queue.count();
     }
 
     /** @todo */
-    size_t capacity()
+    JOBS_FORCE_INLINE size_t capacity()
     {
         return m_capacity;
     }
@@ -852,9 +885,6 @@ private:
 
     /** @todo */
     atomic_queue<size_t> m_free_queue;
-
-    /** @todo */
-    std::atomic<size_t> m_free_count{ 0 };
 };
 
 

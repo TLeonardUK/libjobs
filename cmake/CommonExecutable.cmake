@@ -61,7 +61,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Switch")
 	# Generate nsp
 	add_custom_command(TARGET ${PROJECT_NAME} 
 		POST_BUILD
-		COMMAND "${SWITCH_ROOT}/Tools/CommandLineTools/AuthoringTool/AuthoringTool.exe" "creatensp" "-o" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${app_output_name}.nsp" 
+		COMMAND "${SWITCH_ROOT}/Tools/CommandLineTools/AuthoringTool/AuthoringTool.exe" "creatensp" "-o" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${app_output_name}.nsp"  "--desc" "${SWITCH_ROOT}/Resources/SpecFiles/Application.desc" "--meta" "${CMAKE_SOURCE_DIR}/docs/examples/common/switch/Application.aarch64.lp64.nmeta" "--type" "Application" "--program" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${app_output_name}.nspd/program0.ncd/code" "--utf8"
 	)
 
 endif()
@@ -73,6 +73,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "PS4")
 
 endif()
 
+# If on XBOX, run the xbox environment wrapper.
+if (CMAKE_SYSTEM_NAME STREQUAL "XboxOne")
+
+#	add_custom_target(...
+#		COMMAND cmd /c ${CMAKE_CURRENT_SOURCE_DIR}/wrapper.bat <real_command> args...
+#	)
+
+endif()
 
 if (USE_PIX)
 	target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/third_party/pix/bin/WinPixEventRuntime.lib)

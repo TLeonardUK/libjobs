@@ -28,11 +28,12 @@
 #ifndef __JOBS_DEFINES_H__
 #define __JOBS_DEFINES_H__
 
+ /** @todo */
 #if defined(__ORBIS__)
 #   define JOBS_PLATFORM_PS4
 #elif defined(_DURANGO)
-#   define JOBS_PLATFORM_XBOXONE
-#elif defined(NN_BUILD_TARGET_PLATFORM_NX)
+#   define JOBS_PLATFORM_XBOX_ONE
+#elif defined(NN_NINTENDO_SDK)
 #   define JOBS_PLATFORM_SWITCH
 #elif defined(_WIN32)
 #   define JOBS_PLATFORM_WINDOWS
@@ -45,16 +46,66 @@
 #	error Unknown or unimplemented platform
 #endif
 
+#if defined(JOBS_PLATFORM_WINDOWS)
+#	define WIN32_LEAN_AND_MEAN  1
+#	define VC_EXTRALEAN 1
+#	include <Windows.h>
+#endif
+
+#if defined(JOBS_PLATFORM_SWITCH)
+#   include <nn/os.h>
+#include <nn/nn_Log.h>
+#endif
+
+ /** @todo */
 #if defined(NDEBUG)
 #   define JOBS_RELEASE_BUILD 
 #else
 #   define JOBS_DEBUG_BUILD 
 #endif
 
-#if defined(JOBS_PLATFORM_WINDOWS)
-#	define WIN32_LEAN_AND_MEAN  1
-#	define VC_EXTRALEAN 1
-#	include <Windows.h>
+ /** @todo */
+#if defined(JOBS_PLATFORM_WINDOWS) || \
+    defined(JOBS_PLATFORM_XBOX_ONE)
+#   define JOBS_FORCE_INLINE __forceinline 
+#   define JOBS_FORCE_NO_INLINE __attribute__((noinline))
+#elif defined(JOBS_PLATFORM_PS4) || \
+      defined(JOBS_PLATFORM_SWITCH)
+#   define JOBS_FORCE_INLINE __attribute__((always_inline)) 
+#   define JOBS_FORCE_NO_INLINE __attribute__((noinline))
+#else
+#   define JOBS_FORCE_INLINE 
+#   define JOBS_FORCE_NO_INLINE 
+#endif
+
+ /** @todo */
+#if 1// defined(JOBS_PLATFORM_WINDOWS)
+#   if defined(JOBS_PLATFORM_SWITCH)
+//#       define JOBS_YIELD() __asm__ __volatile__ ("yield")
+#       define JOBS_YIELD() nn::os::YieldThread()
+#   else
+#       define JOBS_YIELD() _mm_pause()
+#   endif
+#else
+    // This provides no benefit on consoles where we have hard affinity.
+#   define JOBS_YIELD()
+#endif
+
+ /** @todo */
+#if defined(JOBS_DEBUG_BUILD)
+#   define JOBS_USE_PROFILE_MARKERS 
+#endif
+
+/** @todo */
+#if 1//defined(JOBS_DEBUG_BUILD)
+#   define JOBS_USE_VERBOSE_LOGGING
+#endif
+
+ /** @todo */
+#if defined(JOBS_PLATFORM_SWITCH)
+#define JOBS_PRINTF(...) NN_LOG(__VA_ARGS__)
+#else
+#define JOBS_PRINTF(...) printf(__VA_ARGS__)
 #endif
 
 #endif // __JOBS_DEFINES_H__

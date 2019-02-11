@@ -39,7 +39,7 @@ void debug_output(
         return;
     }
 
-    printf("%s", message);
+    JOBS_PRINTF("%s", message);
 }
 
 void jobsMain()
@@ -75,7 +75,7 @@ void jobsMain()
         job.set_stack_size(16 * 1024);
         job.set_priority(jobs::priority::low);
         job.set_work([=]() {
-            printf("%s executed\n", job_names[i]);
+            JOBS_PRINTF("%s executed\n", job_names[i]);
         });
     }
 
@@ -109,5 +109,5 @@ void jobsMain()
     // Wait for job to complete.
     scheduler.wait_until_idle();
 
-    printf("All jobs completed.\n");
+    JOBS_PRINTF("All jobs completed.\n");
 }

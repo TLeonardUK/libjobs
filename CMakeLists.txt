@@ -41,7 +41,7 @@ if (BUILD_EXAMPLES)
 	add_subdirectory(docs/examples/5_profile_events)
 	add_subdirectory(docs/examples/6_user_allocation)
 	add_subdirectory(docs/examples/7_game_loop)
-endif(BUILD_EXAMPLES)
+endif()
 
 # Output folders
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/${TARGET_SYSTEM}_${TARGET_ARCHITECTURE})
@@ -69,7 +69,7 @@ add_library(${PROJECT_NAME} STATIC
 include(${libjobs_SOURCE_DIR}/cmake/CommonLibrary.cmake)
 
 # Generate documentation if available.
-if (BUILD_DOC)
+if (BUILD_DOC EQUAL ON) 
 	if (NOT CMAKE_BUILD_TYPE MATCHES "Debug")
 		find_package(Doxygen)
 		if (DOXYGEN_FOUND)
@@ -90,4 +90,4 @@ if (BUILD_DOC)
 		  message("Doxygen need to be installed to generate the doxygen documentation")
 		endif (DOXYGEN_FOUND)
 	endif()
-endif(BUILD_DOC)
+endif()

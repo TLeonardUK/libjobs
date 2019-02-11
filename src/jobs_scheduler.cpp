@@ -42,15 +42,39 @@
 #include <razorcpu.h>
 #endif
 
+#define WorkerThreadState (*m_worker_thread_state)
+
 namespace jobs {
 
-thread_local size_t scheduler::m_worker_job_index = 0;
-thread_local bool scheduler::m_worker_job_completed = false;
-thread_local bool scheduler::m_worker_job_supress_requeue = false;
-thread_local internal::job_context scheduler::m_worker_job_context;
-thread_local internal::job_context* scheduler::m_worker_active_job_context = nullptr;
-thread_local internal::fixed_queue<internal::profile_scope_definition*, 32> scheduler::m_profile_scope_thread_local_cache;
+thread_local scheduler* scheduler::m_worker_thread_scheduler{nullptr};
+thread_local scheduler::worker_thread_state* scheduler::m_worker_thread_state{nullptr};
 bool scheduler::m_profiling_active = false;
+
+class scheduler::worker_thread_state
+{
+public:
+
+    /** Thread local storage for a worker threads current job. */
+    size_t job_index = 0;
+
+    /** Thread local storage for a worker threads current job. */
+    volatile std::atomic<size_t> cloned_job_index = 0;
+
+    /** Thread local storage for flagging of job completed. */
+    bool job_completed = false;
+
+    /** Thread local storage for flagging if a job should not be requeued if it returns without completing (if it will be requeued elsewhere). */
+    bool job_supress_requeue = false;
+
+    /** Thread local storage for the workers job context. */
+    internal::job_context job_context;
+
+    /** Thread local storage for the workers active job context. */
+    internal::job_context* active_job_context = nullptr;
+
+    /** Thread local cache for allocating profile scopes speedily. */
+    internal::fixed_queue<internal::profile_scope_definition*, 32> profile_scope_cache;
+};
 
 scheduler::scheduler()
 {
@@ -66,7 +90,7 @@ scheduler::~scheduler()
     m_destroying = true;
 
     // Wake up all threads.
-    notify_job_available();
+    notify_job_available(0xFFFF);
 
     // Join all threads.
     for (size_t i = 0; i < m_thread_pool_count; i++)
@@ -87,6 +111,13 @@ scheduler::~scheduler()
         {
             pool.pool.get_index(j)->destroy();
         }
+    }
+
+    // Destroy all worker states.
+    if (m_worker_thread_states != nullptr)
+    {
+        m_memory_functions.user_free(m_worker_thread_states);
+        m_worker_thread_states = nullptr;
     }
 
     // Platform destruction.
@@ -285,7 +316,10 @@ result scheduler::init()
         void* ptr = m_raw_memory_functions.user_alloc(size, alignment);
 
         m_total_memory_allocated += size;
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
         write_log(debug_log_verbosity::verbose, debug_log_group::memory, "allocated memory block, size=%zi ptr=0x%08p total=%zi", size, ptr, m_total_memory_allocated.load());
+#endif
 
         return reinterpret_cast<char*>(ptr);
     };
@@ -417,6 +451,24 @@ result scheduler::init()
     };
     std::sort(m_fiber_pools_sorted_by_stack, m_fiber_pools_sorted_by_stack + m_fiber_pool_count, fiber_sort_predicate);
 
+    // Allocate worker states.
+    for (size_t i = 0; i < m_thread_pool_count; i++)
+    {
+        thread_pool& pool = m_thread_pools[i];
+        m_worker_count += pool.thread_count;
+    }
+
+    m_worker_thread_states = (worker_thread_state*)m_memory_functions.user_alloc(sizeof(worker_thread_state) * m_worker_count, alignof(worker_thread_state));
+    if (m_worker_thread_states == nullptr)
+    {
+        return result::out_of_memory;
+    }
+
+    for (size_t i = 0; i < m_worker_count; i++)
+    {
+        new(m_worker_thread_states + i) worker_thread_state();
+    }
+
     // Allocate threads.
     size_t thread_index = 0;
     size_t logical_cores = get_logical_core_count();
@@ -439,8 +491,11 @@ result scheduler::init()
             sprintf(buffer, "Worker (Pool=%zi:%zi Affinity=%zi)", i, index, core_affinity);
 #endif
 
-            return instance->init([&]()
+            return instance->init([&, i, index, thread_index]()
             {
+                m_worker_thread_scheduler = this;
+                m_worker_thread_state = (m_worker_thread_states + (thread_index  - 1));
+
                 worker_entry_point(i, index, *instance, pool);
             }, buffer, core_affinity);
         });
@@ -488,7 +543,9 @@ result scheduler::create_job(job_handle& instance)
 
     internal::job_definition& def = get_job_definition(index);
 
-    write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "job handle allocated, index=%zi ptr=0x%08x", index, &def);
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+   // write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "job handle allocated, index=%zi ptr=0x%08x", index, &def);
+#endif
 
     instance = job_handle(this, index);
     return result::success;
@@ -505,7 +562,9 @@ void scheduler::free_job(size_t index)
     clear_job_dependencies(index);
     def.reset();
 
+#if defined(JOBS_USE_VERBOSE_LOGGING)
     write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "job handle freed, index=%zi ptr=0x%08x", index, &def);
+#endif
 
     m_job_pool.free(index);
 }
@@ -537,7 +596,9 @@ result scheduler::create_counter(counter_handle& instance)
 
     internal::counter_definition& def = get_counter_definition(index);
 
-    write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle allocated, index=%zi ptr=0x%08x", index, &def);
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+   // write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle allocated, index=%zi ptr=0x%08x", index, &def);
+#endif
 
     instance = counter_handle(this, index);
     return result::success;
@@ -548,14 +609,11 @@ void scheduler::free_counter(size_t index)
     internal::counter_definition& def = get_counter_definition(index);
     def.reset();
 
+#if defined(JOBS_USE_VERBOSE_LOGGING)
     write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle freed, index=%zi ptr=0x%08x", index, &def);
+#endif
 
     m_counter_pool.free(index);
-}
-
-internal::counter_definition& scheduler::get_counter_definition(size_t index)
-{
-    return *m_counter_pool.get_index(index);
 }
 
 void scheduler::increase_counter_ref_count(size_t index)
@@ -581,7 +639,6 @@ void scheduler::leave_context(internal::job_context& context)
     // Remove everything from the profile scope stack.
     if (m_profile_functions.leave_scope != nullptr && !m_platform_fiber_aware)
     {
-        //printf("[leave_context] leaving %zi\n", context.profile_scope_depth);
         for (size_t i = 0; i < context.profile_scope_depth; i++)
         {
             m_profile_functions.leave_scope();
@@ -604,17 +661,15 @@ void scheduler::enter_context(internal::job_context& context)
     // Recreate the profile scope stack.
     if (m_profile_functions.enter_scope != nullptr && !m_platform_fiber_aware)
     {
-        //printf("[enter_context] entering %i\n", context.profile_scope_depth);
         internal::profile_scope_definition* scope = context.profile_stack_head;
         while (scope != nullptr)
         {
             m_profile_functions.enter_scope(scope->type, scope->tag);
-            //printf("\t%s\n", scope->tag);
             scope = scope->next;
         }
     }
 
-    m_worker_active_job_context = &context;
+    WorkerThreadState.active_job_context = &context;
 
 //	assert(context.job_def == nullptr || context.job_def->status == internal::job_status::running);
     job_fiber->switch_to();
@@ -623,22 +678,26 @@ void scheduler::enter_context(internal::job_context& context)
 
 void scheduler::switch_context(internal::job_context& new_context)
 {
-    leave_context(*m_worker_active_job_context);
+    leave_context(*WorkerThreadState.active_job_context);
     enter_context(new_context);
+}
+
+void scheduler::return_to_worker(internal::job_context& new_context, bool supress_requeue)
+{
+    WorkerThreadState.job_supress_requeue = supress_requeue;
+    switch_context(new_context);
 }
 
 void scheduler::increase_job_ref_count(size_t index)
 {
     internal::job_definition& def = get_job_definition(index);
-    size_t new_ref_count = ++def.ref_count;
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle ++, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
+    def.ref_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void scheduler::decrease_job_ref_count(size_t index)
 {
     internal::job_definition& def = get_job_definition(index);
-    size_t new_ref_count = --def.ref_count;
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle --, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
+    size_t new_ref_count = def.ref_count.fetch_sub(1, std::memory_order_relaxed) - 1;
     if (new_ref_count == 0)
     {
         free_job(index);
@@ -749,7 +808,9 @@ void scheduler::write_log(debug_log_verbosity level, debug_log_group group, cons
     // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
     // we're just memsetting this here. Needs to be done correctly.
     memset(m_log_format_buffer, 0, max_log_size);
-    snprintf(m_log_format_buffer, max_log_size - 1, "[%s] %s: %s\n", 
+    snprintf(m_log_format_buffer, max_log_size - 1, "[%08x][%p][%s] %s: %s\n", 
+        std::this_thread::get_id(),
+        m_worker_thread_state,
         internal::debug_log_group_strings[(int)group], 
         internal::debug_log_verbosity_strings[(int)level], 
         m_log_buffer);
@@ -759,25 +820,29 @@ void scheduler::write_log(debug_log_verbosity level, debug_log_group group, cons
 
 void scheduler::worker_entry_point(size_t pool_index, size_t worker_index, const internal::thread& this_thread, const thread_pool& thread_pool)
 {
-    m_worker_job_index = 0;
-    m_worker_job_context.reset();
-    m_worker_job_context.scheduler = this;
-    m_worker_job_context.has_fiber = true;
-    m_worker_job_context.is_fiber_raw = true;
-    internal::fiber::convert_thread_to_fiber(m_worker_job_context.raw_fiber);
-    m_worker_job_context.job_def = nullptr;
-    m_worker_active_job_context = &m_worker_job_context;
+    auto& thread_state = WorkerThreadState;
+
+    thread_state.job_index = 0;
+    thread_state.cloned_job_index = 0;
+    thread_state.job_context.reset();
+    thread_state.job_context.scheduler = this;
+    thread_state.job_context.has_fiber = true;
+    thread_state.job_context.is_fiber_raw = true;
+    internal::fiber::convert_thread_to_fiber(thread_state.job_context.raw_fiber);
+
+    thread_state.job_context.job_def = nullptr;
+    thread_state.active_job_context = &thread_state.job_context;
 
     write_log(debug_log_verbosity::verbose, debug_log_group::worker, "worker started, pool=%zi worker=%zi priorities=0x%08x", pool_index, worker_index, thread_pool.job_priorities);
 
-    m_worker_active_job_context->enter_scope(profile_scope_type::worker, false, "Worker (pool=%zi, index=%zi)", pool_index, worker_index);
+    thread_state.active_job_context->enter_scope(profile_scope_type::worker, false, "Worker (pool=%zi, index=%zi)", pool_index, worker_index);
 
     while (!m_destroying)
     {
         execute_next_job(thread_pool.job_priorities, true);
     }
 
-    m_worker_active_job_context->leave_scope();
+    thread_state.active_job_context->leave_scope();
 
     write_log(debug_log_verbosity::verbose, debug_log_group::worker, "worker terminated, pool=%zi worker=%zi", pool_index, worker_index);
 
@@ -790,47 +855,62 @@ void scheduler::worker_fiber_entry_point(size_t pool_index, size_t worker_index)
 
     while (true)
     {
-        internal::job_definition& def = get_job_definition(m_worker_job_index);
-
-        // Execute the job assigned to this thread.
-        write_log(debug_log_verbosity::verbose, debug_log_group::job, "executing job, index=%zi", m_worker_job_index);
-
-        m_worker_active_job_context->enter_scope(profile_scope_type::fiber, true, def.tag);
-
-        def.work();
-        m_worker_job_completed = true;
-
-        m_worker_active_job_context->leave_scope();
+        // Execute the job we have been provided.
+        execute_fiber_job();
 
         // Switch back to the main worker thread fiber.
-        switch_context(m_worker_job_context);
+        switch_context(WorkerThreadState.job_context);
     }
 
     write_log(debug_log_verbosity::verbose, debug_log_group::worker, "fiber terminated, pool=%zi worker=%zi", pool_index, worker_index);
 }
 
-internal::job_definition& scheduler::get_job_definition(size_t index)
+void scheduler::execute_fiber_job()
 {
-    return *m_job_pool.get_index(index);
+    worker_thread_state& state = WorkerThreadState;
+
+    internal::job_definition& def = get_job_definition(state.job_index);
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+    // Execute the job assigned to this thread.
+    write_log(debug_log_verbosity::verbose, debug_log_group::job, "executing job, state=%p index=%zi/%zi", &state, state.job_index, state.cloned_job_index.load());
+#endif
+
+    state.active_job_context->enter_scope(profile_scope_type::fiber, true, def.tag);
+
+    def.work();
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+    // Execute the job assigned to this thread.
+    write_log(debug_log_verbosity::verbose, debug_log_group::job, "finished executing job, state=%p index=%zi/%zi", &state, state.job_index, state.cloned_job_index.load());
+#endif
+
+    state.job_completed = true;
+
+    state.active_job_context->leave_scope();
 }
 
 result scheduler::dispatch_job(size_t index)
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::dispatch_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::dispatch_job", this);
 
     internal::job_definition& def = get_job_definition(index);
 
-    if (def.status != internal::job_status::initialized &&
-        def.status != internal::job_status::completed)
+    internal::job_status status = def.status.load(std::memory_order_relaxed);
+    if (status != internal::job_status::initialized &&
+        status != internal::job_status::completed)
     {
+        write_log(debug_log_verbosity::warning, debug_log_group::job, "attempt to dispatch job that is still running, index=%zi", index);
         return result::already_dispatched;
     }
 
+#if defined(JOBS_USE_VERBOSE_LOGGING)
     write_log(debug_log_verbosity::verbose, debug_log_group::job, "dispatching job, index=%zi", index);
+#endif
 
     // Jobs always get an extra ref count until they are complete so they don't get freed while running.
     increase_job_ref_count(index);
-    def.status = internal::job_status::pending;
+    def.status.store(internal::job_status::pending, std::memory_order_relaxed);
     def.context.queues_contained_in = 0;
     def.context.job_def = &def;
 
@@ -844,30 +924,141 @@ result scheduler::dispatch_job(size_t index)
         requeue_job(index);
     }
 
-    // Wake all workers up so they can pickup task.
-    notify_job_available();
+    return result::success;
+}
+
+result scheduler::dispatch_batch(job_handle* job_array, size_t count)
+{
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::dispatch_batch", this);
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "dispatching job, index=%zi", index);
+#endif
+
+    size_t job_queues = 0;
+
+    // Jobs always get an extra ref count until they are complete so they don't get freed while running.
+    for (size_t i = 0; i < count; i++)
+    {
+        size_t index = job_array[i].m_index;
+        internal::job_definition& def = get_job_definition(index);
+
+        internal::job_status status = def.status.load(std::memory_order_relaxed);
+        if (status != internal::job_status::initialized &&
+            status != internal::job_status::completed)
+        {
+            write_log(debug_log_verbosity::warning, debug_log_group::job, "attempt to dispatch job that is still running, index=%zi", index);
+            return result::already_dispatched;
+        }
+
+        increase_job_ref_count(index);
+        def.status.store(internal::job_status::pending, std::memory_order_relaxed);
+        def.context.queues_contained_in = 0;
+        def.context.job_def = &def;
+
+        job_queues |= (size_t)def.job_priority;
+    }
+
+    // Keep track of number of active jobs for idle monitoring. 
+    m_active_job_count.fetch_add(count);
+
+    // Dispatch valid jobs.
+    requeue_job_batch(job_array, count, job_queues);
+
+    return result::success;
+}
+
+result scheduler::requeue_job_batch(job_handle* job_array, size_t count, size_t job_queues)
+{
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::requeue_job_batch", this);
+
+    size_t queued_job_count = 0;
+    bool first_iteration = true;
+
+    // Generate a list of jobs for each priority and queue them at once.
+    for (size_t i = 0; i < (int)priority::count; i++)
+    {
+        int mask = 1 << i;
+
+        // After first iteration we know what queues jobs exists for
+        // any we don't care about.
+        if (((size_t)job_queues & mask) == 0)
+        {
+            continue;
+        }
+
+        jobs_profile_scope(profile_scope_type::worker, "sort by priority", this);
+
+        // Do an in-place sort.
+        size_t number_with_priority = 0;
+        size_t write_index = 0;
+
+        for (size_t j = 0; j < count; j++)
+        {
+            size_t index = job_array[j].m_index;
+
+            internal::job_definition& def = get_job_definition(index);
+            if (def.pending_predecessors != 0)
+            {
+                continue;
+            }
+
+            // Store number of valid jobs and a mask of all queues jobs exist in.
+            if (first_iteration)
+            {
+                queued_job_count++;
+            }
+
+            if (((size_t)def.job_priority & mask) != 0 && (def.context.queues_contained_in & mask) == 0)
+            {
+                def.context.queues_contained_in |= mask;
+                number_with_priority++;
+
+                if (i != write_index)
+                {
+                    size_t tmp = job_array[write_index].m_index;
+                    job_array[write_index].m_index = job_array[j].m_index;
+                    job_array[j].m_index = tmp;
+                }
+
+                write_index++;
+            }
+        }
+
+        if (number_with_priority > 0)
+        {
+            jobs_profile_scope(profile_scope_type::worker, "batch enqueue", this);
+
+            result res = m_pending_job_queues[i].pending_job_indicies.push_batch(
+                &job_array[0].m_index, 
+                reinterpret_cast<size_t>(&job_array[1].m_index) - reinterpret_cast<size_t>(&job_array[0].m_index), 
+                number_with_priority);
+
+            assert(res == result::success);
+        }
+
+        first_iteration = false;
+    }
+
+    notify_job_available(queued_job_count);
 
     return result::success;
 }
 
 result scheduler::requeue_job(size_t index)
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::requeue_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::requeue_job", this);
 
     internal::job_definition& def = get_job_definition(index);
 
-    //printf("requeue job[%zi]: %s\n", index, def.tag);
-
-    assert(def.pending_predecessors == 0);
-    assert(def.status != internal::job_status::waiting_on_counter);
-    assert(def.status != internal::job_status::waiting_on_job);
-    assert(def.status != internal::job_status::sleeping);
-
-    if (def.status != internal::job_status::sleeping &&
-        def.status != internal::job_status::waiting_on_job &&
-        def.status != internal::job_status::waiting_on_counter)
+    // Reset the status to pending if its anything else.
+    // @todo: is this neccessary? Most requeues will set the status themselves.
+    internal::job_status status = def.status.load(std::memory_order_relaxed);
+    if (status != internal::job_status::sleeping &&
+        status != internal::job_status::waiting_on_job &&
+        status != internal::job_status::waiting_on_counter)
     {
-        def.status = internal::job_status::pending;
+        def.status.store(internal::job_status::pending, std::memory_order_relaxed);
     }
 
     // Put job into a job queue for each priority it holds (not sure why you would want multiple priorities, but might as well support it ...).
@@ -884,6 +1075,8 @@ result scheduler::requeue_job(size_t index)
         }
     }
 
+    notify_job_available(1);
+
     return result::success;
 }
 
@@ -891,13 +1084,8 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 {
     bool shifted_last_iteration = false;
 
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::get_next_job_from_queue");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::get_next_job_from_queue", this);
 
-    //printf("get_next_job_from_queue\n");
-
-    // @todo: this is a failure, we could end up not checking jobs if they are enqueued during? 
-    //        We should probably seperate this into a waiting queue for those waiting on dependencies 
-    //        and the pending_job_indicies queue which is always available.
     size_t count = queue.pending_job_indicies.count();
 
     for (size_t i = 0; i < count; i++)
@@ -914,15 +1102,17 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
         // If job hasn't already started running (because its been picked up from another queue),
         // the mark it as running and return it.
-        if (def.status == internal::job_status::pending)
+        internal::job_status expected = internal::job_status::pending;
+        if (def.status.compare_exchange_strong(expected, internal::job_status::running))
         {
             def.context.queues_contained_in &= ~queue_mask;
             assert(def.pending_predecessors == 0);
 
+#if defined(JOBS_USE_VERBOSE_LOGGING)
             write_log(debug_log_verbosity::verbose, debug_log_group::worker, "Picked up %zi from queue %i", job_index, queue_mask);
+#endif
 
-            // Make job as running so nothing else attempts to pick it up.
-            def.status = internal::job_status::running;
+            size_t result = --m_available_jobs;
 
             output_job_index = job_index;
             return true;
@@ -934,12 +1124,12 @@ bool scheduler::get_next_job_from_queue(size_t& output_job_index, job_queue& que
 
 bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_block)
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::get_next_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::get_next_job", this);
 
     while (!m_destroying)
     {
         {
-            jobs_profile_scope(profile_scope_type::worker, "dequeue job");
+            jobs_profile_scope(profile_scope_type::worker, "dequeue job", this);
 
             // Look for work in each priority queue we can execute.
             for (size_t i = 0; i < (int)priority::count; i++)
@@ -970,7 +1160,7 @@ bool scheduler::get_next_job(size_t& job_index, priority priorities, bool can_bl
 
 void scheduler::complete_job(size_t job_index)
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::complete_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::complete_job", this);
 
     internal::job_definition& def = get_job_definition(job_index);
 
@@ -1027,17 +1217,17 @@ void scheduler::complete_job(size_t job_index)
     // Clean up dependencies, we no longer need them at this point.
     clear_job_dependencies(job_index);
 
+    // Increase the completion counter.
+    if (def.completion_counter.is_valid())
+    {
+        def.completion_counter.add(1);
+    }
+
     // Remove the ref count we added on dispatch.
     decrease_job_ref_count(job_index);
 
     // Keep track of number of active jobs for idle monitoring. 
     m_active_job_count--;
-
-    // If job had successors, invoke task available cvar to wake everyone up.
-    if (needs_to_wake_up_successors)
-    {
-        notify_job_available();
-    }
 
     // Wake up anyone waiting for tasks to complete.
     {
@@ -1046,7 +1236,9 @@ void scheduler::complete_job(size_t job_index)
 }
 
 bool scheduler::execute_next_job(priority job_priorities, bool can_block)
-{	
+{
+    auto& thread_state = WorkerThreadState;
+
     // Grab next job to run.
     size_t job_index;
     if (get_next_job(job_index, job_priorities, can_block))
@@ -1065,6 +1257,8 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
             {
                 write_log(debug_log_verbosity::warning, debug_log_group::job, "requeuing job as no fibers available, index=%zi", job_index);
 
+                // @todo: don't requeue, this results in churn, put it in a queue to be requeued on job-completion.
+
                 // No fiber available? Back into the queue you go.
                 requeue_job(job_index);
 
@@ -1073,23 +1267,29 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
             }
         }
 
-        // To to switcharoo to fiber land.
-        m_worker_job_index = job_index;
-        m_worker_job_completed = false;
-        m_worker_job_supress_requeue = false;
+        // Perform the old switcharoo to fiber land.
+        thread_state.job_index = job_index;
+        thread_state.cloned_job_index = job_index;
+        thread_state.job_completed = false;
+        thread_state.job_supress_requeue = false;
 
         internal::fiber* job_fiber = m_fiber_pools_sorted_by_stack[def.context.fiber_pool_index]->pool.get_index(def.context.fiber_index);
 
-        write_log(debug_log_verbosity::verbose, debug_log_group::job, "switching job=%zi fiber=%zi:%zi", job_index, def.context.fiber_pool_index, def.context.fiber_index);
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+        write_log(debug_log_verbosity::verbose, debug_log_group::job, "switching state=%p job=%zi/%zi fiber=%zi:%zi", &thread_state, thread_state.job_index, thread_state.cloned_job_index.load(), def.context.fiber_pool_index, def.context.fiber_index);
+#endif
         switch_context(def.context);
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+        write_log(debug_log_verbosity::verbose, debug_log_group::job, "returning from state=%p job=%zi/%zi fiber=%zi:%zi completed=%s", &thread_state, thread_state.job_index, thread_state.cloned_job_index.load(), def.context.fiber_pool_index, def.context.fiber_index, thread_state.job_completed ? "true" : "false");
+#endif
 
         // If not complete yet, requeue, we probably have some sync point/dependencies to deal with.
-        if (!m_worker_job_completed)
+        if (!thread_state.job_completed)
         {
-            if (!m_worker_job_supress_requeue)
+            if (!thread_state.job_supress_requeue)
             {
                 // No fiber available? Back into the queue you go.
-                requeue_job(job_index);
+                requeue_job(thread_state.job_index);
             }
 
             // There is further work to do so return true here.
@@ -1098,7 +1298,7 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
         // Else mark as completed.
         else
         {
-            complete_job(m_worker_job_index);
+            complete_job(thread_state.job_index);
         }
         
         return true;
@@ -1107,9 +1307,15 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
     return false;
 }
 
+std::atomic<size_t> fiber_count{ 0 };
+
 result scheduler::allocate_fiber(size_t required_stack_size, size_t& fiber_index, size_t& fiber_pool_index)
 {
     bool any_suitable_pools = false;
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "Allocating fiber %zi...", ++fiber_count);
+#endif
 
     for (size_t i = 0; i < m_fiber_pool_count; i++)
     {
@@ -1121,7 +1327,9 @@ result scheduler::allocate_fiber(size_t required_stack_size, size_t& fiber_index
             result res = pool.pool.alloc(fiber_index);
             if (res == result::success)
             {
+#if defined(JOBS_USE_VERBOSE_LOGGING)
                 write_log(debug_log_verbosity::verbose, debug_log_group::job, "fiber allocated, pool=%zi index=%zi", i, fiber_index);
+#endif
 
                 fiber_pool_index = i;
                 return result::success;
@@ -1143,7 +1351,15 @@ result scheduler::allocate_fiber(size_t required_stack_size, size_t& fiber_index
 result scheduler::free_fiber(size_t fiber_index, size_t fiber_pool_index)
 {
     fiber_pool& pool = *m_fiber_pools_sorted_by_stack[fiber_pool_index];
-    write_log(debug_log_verbosity::verbose, debug_log_group::job, "fiber freed, pool=%zi index=%zi", fiber_pool_index, fiber_index);
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "Freeing fiber %zi...", --fiber_count);
+#endif
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "fiber freed, pool=%zi index=%zi", fiber_pool_index, fiber_index);
+#endif
+
     pool.pool.free(fiber_index);
     return result::success;
 }
@@ -1193,7 +1409,7 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
 
 result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//, priority assist_on_tasks)
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job", this);
 
     // @todo if we are already signaled and not auto-reset, just return.
     internal::job_context* context = get_active_job_context();
@@ -1223,7 +1439,6 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
                 {
                     timeout_called = true;
                     requeue_job(context->job_def->index);
-                    notify_job_available();
                 }
 
             });
@@ -1259,7 +1474,7 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//
         if (!is_complete)
         {
             // Supress requeueing the job, we will do this when the callback returns.
-            m_worker_job_supress_requeue = true;
+            WorkerThreadState.job_supress_requeue = true;
 
             // Switch back to worker which will requeue fiber for execution later.			
             switch_context(*worker_context);
@@ -1336,7 +1551,7 @@ bool scheduler::is_idle() const
 result scheduler::alloc_scope(internal::profile_scope_definition*& output)
 {
     // We maintain a small thread-local list for speedy allocations.
-    result res = m_profile_scope_thread_local_cache.pop(output);
+    result res = WorkerThreadState.profile_scope_cache.pop(output);
     if (res == result::success)
     {
         return res;
@@ -1357,7 +1572,7 @@ result scheduler::alloc_scope(internal::profile_scope_definition*& output)
 result scheduler::free_scope(internal::profile_scope_definition* scope)
 {
     // Free to the small thread-local list for speedy allocations
-    result res = m_profile_scope_thread_local_cache.push(scope);
+    result res = WorkerThreadState.profile_scope_cache.push(scope);
     if (res == result::success)
     {
         return res;
@@ -1379,7 +1594,9 @@ result scheduler::sleep(timeout duration)
     {
         volatile bool timeout_called = false;
 
+#if defined(JOBS_USE_VERBOSE_LOGGING)
         definition->context.scheduler->write_log(debug_log_verbosity::verbose, debug_log_group::job, "sleeping fiber=%zi:%zi", definition->context.fiber_pool_index, definition->context.fiber_index);
+#endif
 
         // Put job to sleep.
         definition->status = internal::job_status::sleeping;
@@ -1387,17 +1604,16 @@ result scheduler::sleep(timeout duration)
         // Queue a wakeup.
         size_t schedule_handle;
         result res = definition->context.scheduler->m_callback_scheduler.schedule(duration, schedule_handle, [&]() {
+
+#if defined(JOBS_USE_VERBOSE_LOGGING)
             definition->context.scheduler->write_log(debug_log_verbosity::verbose, debug_log_group::job, "wakeup fiber=%zi:%zi", definition->context.fiber_pool_index, definition->context.fiber_index);
+#endif
 
             timeout_called = true;
 
-            //printf("Woke up!\n");
             definition->status = internal::job_status::pending;
 
             definition->context.scheduler->requeue_job(definition->index);
-
-            //printf("Wake workers.\n");
-            definition->context.scheduler->notify_job_available();
         });
 
         // Failed to schedule a wakeup? Abort.
@@ -1408,10 +1624,10 @@ result scheduler::sleep(timeout duration)
         }
 
         // Supress requeueing the job, we will do this when the callback returns.
-        m_worker_job_supress_requeue = true;
+        WorkerThreadState.job_supress_requeue = true;
 
         // Switch back to worker which will requeue fiber for execution later.
-        definition->context.scheduler->switch_context(m_worker_job_context);
+        definition->context.scheduler->switch_context(WorkerThreadState.job_context);
 
         // We shouldn't be able to get back here without a timeout.
         assert(timeout_called);
@@ -1431,7 +1647,11 @@ result scheduler::sleep(timeout duration)
 
 internal::job_context* scheduler::get_active_job_context()
 {
-    return m_worker_active_job_context;
+    if (m_worker_thread_scheduler == nullptr)
+    {
+        return nullptr;
+    }
+    return WorkerThreadState.active_job_context;
 }
 
 bool scheduler::is_profiling_active()
@@ -1441,14 +1661,22 @@ bool scheduler::is_profiling_active()
 
 internal::job_context* scheduler::get_worker_job_context()
 {
-    return &m_worker_job_context;
+    if (m_worker_thread_scheduler == nullptr)
+    {
+        return nullptr;
+    }
+    return &WorkerThreadState.job_context;
 }
 
 internal::job_definition* scheduler::get_active_job_definition()
 {
-    if (m_worker_active_job_context != nullptr)
+    if (m_worker_thread_scheduler == nullptr)
     {
-        return m_worker_active_job_context->job_def;
+        return nullptr;
+    }
+    if (WorkerThreadState.active_job_context != nullptr)
+    {
+        return WorkerThreadState.active_job_context->job_def;
     }
     else
     {
@@ -1456,27 +1684,41 @@ internal::job_definition* scheduler::get_active_job_definition()
     }
 }
 
-void scheduler::notify_job_available()
+void scheduler::notify_job_available(size_t job_count)
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_available");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_available", this);
 
-    m_task_available_cvar.notify_all();
+    //std::unique_lock<std::mutex> lock(m_task_available_mutex);
+
+    size_t result = (m_available_jobs += job_count);
+    
+    if (job_count > m_worker_count)
+    {
+        m_task_available_cvar.notify_all();
+    }
+    else
+    {
+        for (int i = 0; i < job_count; i++)
+        {
+            m_task_available_cvar.notify_one();
+        }
+    }
 }
 
 void scheduler::notify_job_complete()
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_complete");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_complete", this);
 
     m_task_complete_cvar.notify_all();
 }
 
 void scheduler::wait_for_job_available()
 {
-    jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job_available");
+    jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job_available", this);
 
     std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
-    if (m_destroying)
+    if (m_destroying || m_available_jobs > 0)
     {
         return;
     }

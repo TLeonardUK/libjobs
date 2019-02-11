@@ -42,7 +42,7 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    printf("%s", message);
+    JOBS_PRINTF("%s", message);
 }
 
 // This function is invoked when a job enters a new frame on the profile scope stack. 
@@ -178,5 +178,5 @@ void jobsMain()
     // Wait for job to complete.
     scheduler.wait_until_idle();
 
-    printf("All jobs completed.\n");
+    JOBS_PRINTF("All jobs completed.\n");
 }

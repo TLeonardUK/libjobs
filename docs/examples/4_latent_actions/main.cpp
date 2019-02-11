@@ -34,7 +34,7 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    printf("%s", message);
+    JOBS_PRINTF("%s", message);
 }
 
 void jobsMain()
@@ -97,9 +97,9 @@ void jobsMain()
 
     // Make the first job go to sleep for a while.
     jobs[0].set_work([&]() {
-        printf("%s: starting sleep\n", job_names[0]);
+        JOBS_PRINTF("%s: starting sleep\n", job_names[0]);
         jobs::scheduler::sleep(8 * 1000);
-        printf("%s: finish sleep\n", job_names[0]);
+        JOBS_PRINTF("%s: finish sleep\n", job_names[0]);
 
         counter_1.add(1);
     });
@@ -107,7 +107,7 @@ void jobsMain()
     // Make the second job signal an event.
     jobs[1].set_work([&]() {
         jobs::scheduler::sleep(4 * 1000);
-        printf("%s: signaling event\n", job_names[1]);
+        JOBS_PRINTF("%s: signaling event\n", job_names[1]);
         event_1.signal();
 
         counter_1.add(1);
@@ -115,40 +115,40 @@ void jobsMain()
 
     // Make the third job wait on the event signal.
     jobs[2].set_work([&]() {
-        printf("%s: waiting on event\n", job_names[2]);
+        JOBS_PRINTF("%s: waiting on event\n", job_names[2]);
 
         // If you only want to wait a given amount of time you can provide
         // a non-infinite timeout and check the return value for result::timeout
         // to determine the reason the function returned.
         event_1.wait(jobs::timeout::infinite);
 
-        printf("%s: continuing\n", job_names[2]);
+        JOBS_PRINTF("%s: continuing\n", job_names[2]);
 
         counter_1.add(1);
     });
 
     // Make the forth job wait on the first sleeping job.
     jobs[3].set_work([&]() {
-        printf("%s: waiting on sleeping job\n", job_names[3]);
+        JOBS_PRINTF("%s: waiting on sleeping job\n", job_names[3]);
 
         // If you only want to wait a given amount of time you can provide
         // a non-infinite timeout and check the return value for result::timeout
         // to determine the reason the function returned.
         jobs[0].wait(jobs::timeout::infinite);
 
-        printf("%s: continuing\n", job_names[3]);
+        JOBS_PRINTF("%s: continuing\n", job_names[3]);
 
         counter_1.add(1);
     });
 
     // Make the fifth job that waits until a counter (incremented by other jobs) gets to a value.
     jobs[4].set_work([&]() {
-        printf("%s: waiting on counter\n", job_names[4]);
+        JOBS_PRINTF("%s: waiting on counter\n", job_names[4]);
 
         // This will wait until the counter is incremented by all the other jobs.
         counter_1.wait_for(job_count - 1, jobs::timeout::infinite);
 
-        printf("%s: continuing\n", job_names[4]);
+        JOBS_PRINTF("%s: continuing\n", job_names[4]);
     });
 
     // Dispatch all jobs.
@@ -172,5 +172,5 @@ void jobsMain()
     // Wait for job to complete.
     scheduler.wait_until_idle();
 
-    printf("All jobs completed.\n");
+    JOBS_PRINTF("All jobs completed.\n");
 }

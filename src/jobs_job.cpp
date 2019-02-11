@@ -197,10 +197,12 @@ void job_definition::reset()
     ref_count = 0;
     work = nullptr;
     stack_size = 0;
-    job_priority = priority::medium;
+    job_priority = priority::normal;
     status = job_status::initialized;
     tag[0] = '\0';
     pending_predecessors = 0;
+
+    completion_counter = counter_handle();
 
     wait_counter = counter_handle();
     wait_event = event_handle();
@@ -338,6 +340,23 @@ result job_handle::set_priority(priority job_priority)
 
     internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
     definition.job_priority = job_priority;
+
+    return result::success;
+}
+
+result job_handle::set_completion_counter(const counter_handle& counter)
+{
+    if (!is_valid())
+    {
+        return result::invalid_handle;
+    }
+    if (!is_mutable())
+    {
+        return result::not_mutable;
+    }
+
+    internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
+    definition.completion_counter = counter;
 
     return result::success;
 }
@@ -487,7 +506,7 @@ bool job_handle::operator!=(const job_handle& rhs) const
     return !(*this == rhs);
 }
 
-profile_scope_internal::profile_scope_internal(jobs::profile_scope_type type, const char* tag)
+profile_scope_internal::profile_scope_internal(jobs::profile_scope_type type, const char* tag, jobs::scheduler* scheduler)
 {
     if (!scheduler::is_profiling_active())
     {
@@ -495,12 +514,16 @@ profile_scope_internal::profile_scope_internal(jobs::profile_scope_type type, co
     }
 
     internal::job_context* context = scheduler::get_active_job_context();
-
     if (context != nullptr)
     {
         context->enter_scope(type, true, tag);
     }
+    else if (scheduler != nullptr)
+    {
+        scheduler->m_profile_functions.enter_scope(type, tag);
+    }
 
+    m_scheduler = scheduler;
     m_context = context;
 }
 
@@ -521,6 +544,10 @@ profile_scope_internal::~profile_scope_internal()
     if (context != nullptr)
     {
         context->leave_scope();
+    }
+    else if (m_scheduler != nullptr)
+    {
+        m_scheduler->m_profile_functions.leave_scope();
     }
 }
 

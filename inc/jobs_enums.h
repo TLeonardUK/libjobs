@@ -49,13 +49,15 @@ enum class result
     out_of_objects,         /**< Could not allocate a free object instance to fulfil request. */  
     maximum_exceeded,       /**< Maximum number of resources that can be registered/added has been exceeded. */  
     already_set,            /**< A value has already been set and cannot be set multiple times. */  
-    already_initialized,    /**< Operation could not be performed as the object has already been initialized. */  
+    not_started,            /**< Attempt to finish an operation that has not started. */
+    already_initialized,    /**< Operation could not be performed as the object has already been initialized. */
     no_thread_pools,        /**< Scheduler attempted to be initialized with no thread pools defined. */  
     no_fiber_pools,         /**< Scheduler attempted to be initialized with no fiber pools defined. */  
     platform_error,         /**< A internal platform function call failed for unspecified/unknown reasons. */
     invalid_handle,         /**< The handle the operation was performed on was invalid, either it points to a disposed object, or was never initialized. */
     already_dispatched,     /**< Job has already been dispatched and cannot be again until complete. */
     not_mutable,            /**< Object is in a state where it is not currently mutable (dispatch/in-progress). */
+    has_dependencies,       /**< Tried to perform operation before dependencies were satisfied. */
     timeout,                /**< Operation timed out before completion. */
     not_in_job,             /**< Attempt to execution a function that can only be run under a jobs context. */
     already_complete,       /**< Attempt was made to stop or cancel an operation which has already completed. */
@@ -74,7 +76,7 @@ enum class priority
 {
     critical    = 1 << 0,          /**< Critical priority jobs */
     high        = 1 << 1,            /**< High priority jobs */
-    medium      = 1 << 2,           /**< Medium priority jobs */
+    normal      = 1 << 2,           /**< Medium priority jobs */
     low         = 1 << 3,           /**< Low priority jobs */
     slow        = 1 << 4,           /**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */
     

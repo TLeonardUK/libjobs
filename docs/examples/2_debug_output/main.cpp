@@ -44,7 +44,7 @@ void debug_output(
     jobs::debug_log_group group, 
     const char* message)
 {
-    printf("%s", message);
+    JOBS_PRINTF("%s", message);
 }
 
 void jobsMain()
@@ -74,7 +74,7 @@ void jobsMain()
     job_1.set_stack_size(16 * 1024);
     job_1.set_priority(jobs::priority::low);
     job_1.set_work([=]() {
-        printf("Example job executed\n");
+        JOBS_PRINTF("Example job executed\n");
     });
 
     // Dispatch job.
@@ -83,5 +83,5 @@ void jobsMain()
     // Wait for job to complete.
     scheduler.wait_until_idle();
 
-    printf("All jobs completed.\n");
+    JOBS_PRINTF("All jobs completed.\n");
 }

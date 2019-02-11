@@ -146,6 +146,9 @@ public:
     /** @todo */
     bool operator!=(const counter_handle& rhs) const;
 
+    /** @todo */
+    bool is_valid() const;
+
 private:
 
     /** @todo */

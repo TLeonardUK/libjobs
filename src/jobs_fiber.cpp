@@ -42,7 +42,7 @@ fiber::~fiber()
 
 void fiber::destroy()
 {
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
     if (m_fiber_handle != nullptr && !m_is_thread)
     {
@@ -60,7 +60,11 @@ void fiber::destroy()
 
 #elif defined(JOBS_PLATFORM_SWITCH)
 
-    // @todo
+    if (m_fiber_handle_created && !m_is_thread)
+    {
+        nn::os::FinalizeFiber(&m_fiber_handle);
+        m_fiber_handle_created = false;
+    }
 
 #elif defined(JOBS_PLATFORM_XBOXONE)
 
@@ -71,13 +75,19 @@ void fiber::destroy()
 #	error Unimplemented platform
 
 #endif
+
+    if (m_fiber_context != nullptr)
+    {
+        m_memory_functions.user_free(m_fiber_context);
+        m_fiber_context = nullptr;
+    }
 }
 
 result fiber::init(size_t stack_size, const fiber_entry_point& entry_point, const char* name)
 {
     m_entry_point = entry_point;
 
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
     m_fiber_handle = CreateFiberEx(stack_size, stack_size, FIBER_FLAG_FLOAT_SWITCH, trampoline_entry_point, this);
     if (m_fiber_handle == nullptr)
@@ -110,11 +120,20 @@ result fiber::init(size_t stack_size, const fiber_entry_point& entry_point, cons
 
 #elif defined(JOBS_PLATFORM_SWITCH)
 
-    // @todo
+    // Size of stack must be aligned to this (there are no notes about this in the api
+    // docs, but it will assert if you don't ...). Note this value is not the same as nn::os::FiberStackAlignment.
+    static const int stack_size_alignment = 0x1000; 
+    stack_size = ((stack_size + stack_size_alignment - 1) / stack_size_alignment) * stack_size_alignment;
 
-#elif defined(JOBS_PLATFORM_XBOXONE)
+    m_fiber_context = m_memory_functions.user_alloc(stack_size, nn::os::FiberStackAlignment);
+    if (m_fiber_context == nullptr)
+    {
+        return result::out_of_memory;
+    }
 
-    // @todo
+    nn::os::InitializeFiber(&m_fiber_handle, trampoline_entry_point, reinterpret_cast<void*>(this), m_fiber_context, stack_size, 0);
+
+    m_fiber_handle_created = true;
 
 #else
 
@@ -130,7 +149,7 @@ void fiber::convert_thread_to_fiber(fiber& result)
     result.m_entry_point = nullptr;
     result.m_is_thread = true;
 
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
     result.m_fiber_handle = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
 
@@ -140,11 +159,7 @@ void fiber::convert_thread_to_fiber(fiber& result)
 
 #elif defined(JOBS_PLATFORM_SWITCH)
 
-    // @todo
-
-#elif defined(JOBS_PLATFORM_XBOXONE)
-
-    // @todo
+    // Nothing to do.
 
 #else
 
@@ -155,7 +170,7 @@ void fiber::convert_thread_to_fiber(fiber& result)
 
 void fiber::convert_fiber_to_thread()
 {
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
     ConvertFiberToThread();
 
@@ -165,11 +180,7 @@ void fiber::convert_fiber_to_thread()
 
 #elif defined(JOBS_PLATFORM_SWITCH)
 
-    // @todo
-
-#elif defined(JOBS_PLATFORM_XBOXONE)
-
-    // @todo
+    //Nothing to do.
 
 #else
 
@@ -180,7 +191,7 @@ void fiber::convert_fiber_to_thread()
 
 result fiber::switch_to()
 {
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
     SwitchToFiber(m_fiber_handle);
 
@@ -205,11 +216,14 @@ result fiber::switch_to()
 
 #elif defined(JOBS_PLATFORM_SWITCH)
 
-    // @todo
-
-#elif defined(JOBS_PLATFORM_XBOXONE)
-
-    // @todo
+    if (m_is_thread)
+    {
+        nn::os::SwitchToFiber(nullptr);
+    }
+    else
+    {
+        nn::os::SwitchToFiber(&m_fiber_handle);
+    }
 
 #else
 
@@ -220,7 +234,7 @@ result fiber::switch_to()
     return result::success;
 }
 
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
 VOID CALLBACK fiber::trampoline_entry_point(PVOID lpParameter)
 {
@@ -234,6 +248,15 @@ void fiber::trampoline_entry_point(uint64_t argOnInitialize, uint64_t argOnRun)
 {
     fiber* this_fiber = reinterpret_cast<fiber*>(argOnInitialize);
     this_fiber->m_entry_point();    
+}
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+nn::os::FiberType* fiber::trampoline_entry_point(void* arg)
+{
+    fiber* this_fiber = reinterpret_cast<fiber*>(arg);
+    this_fiber->m_entry_point();
+    return nullptr;
 }
 
 #endif

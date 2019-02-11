@@ -102,7 +102,7 @@
       "variables": [
         {
           "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "cmake\\Toolchain_XboxOne.cmake"
+          "value": "cmake\\Toolchain\\XboxOne.cmake"
         }
       ]
     },
@@ -121,7 +121,7 @@
       "variables": [
         {
           "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "cmake\\Toolchain_XboxOne.cmake"
+          "value": "cmake\\Toolchain\\XboxOne.cmake"
         }
       ]
     },
@@ -140,7 +140,7 @@
       "variables": [
         {
           "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "cmake\\Toolchain_PS4.cmake"
+          "value": "cmake\\Toolchain\\PS4.cmake"
         }
       ]
     },
@@ -159,7 +159,7 @@
       "variables": [
         {
           "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "cmake\\Toolchain_PS4.cmake"
+          "value": "cmake\\Toolchain\\PS4.cmake"
         }
       ]
     },
@@ -178,7 +178,7 @@
       "variables": [
         {
           "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "cmake\\Toolchain_Switch.cmake"
+          "value": "cmake\\Toolchain\\Switch.cmake"
         }
       ]
     },
@@ -197,7 +197,7 @@
       "variables": [
         {
           "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "cmake\\Toolchain_Switch.cmake"
+          "value": "cmake\\Toolchain\\Switch.cmake"
         }
       ]
     }

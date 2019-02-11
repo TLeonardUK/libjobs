@@ -1,8 +1,8 @@
 ﻿<?xml version="1.0"?>
 <NintendoSdkMeta>
     <Core>
-        <Name>libjobs example</Name>
-        <ApplicationId>0x01004b9000490001</ApplicationId>
+        <Name>Application</Name>
+        <ApplicationId>0x01004b9000490000</ApplicationId>
         <Is64BitInstruction>True</Is64BitInstruction>
         <ProcessAddressSpace>AddressSpace64Bit</ProcessAddressSpace>
     </Core>
@@ -12,14 +12,14 @@
     <Application>
         <Title>
             <Language>AmericanEnglish</Language>
-            <Name>LibJobs Example</Name>
-            <Publisher>Tim Leonard</Publisher>
+            <Name>Name</Name>
+            <Publisher>Publisher</Publisher>
         </Title>
         <Icon>
             <Language>AmericanEnglish</Language>
             <IconPath>./NintendoSDK_Application.bmp</IconPath>
         </Icon>
-        <DisplayVersion>0.0.1</DisplayVersion>
+        <DisplayVersion>1.0.0</DisplayVersion>
         <SupportedLanguage>AmericanEnglish</SupportedLanguage>
         <Rating>
             <Organization>ESRB</Organization>

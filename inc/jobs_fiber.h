@@ -36,6 +36,8 @@
 
 #if defined(JOBS_PLATFORM_PS4)
 #include <sce_fiber.h>
+#elif defined(JOBS_PLATFORM_SWITCH)
+#include <nn/os.h>
 #endif
 
 namespace jobs {
@@ -110,7 +112,7 @@ public:
 
 private:
 
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
     
     /** Trampoline function used to call the user-defined entry point. */
     static VOID CALLBACK trampoline_entry_point(PVOID lpParameter);
@@ -120,6 +122,11 @@ private:
     /** Trampoline function used to call the user-defined entry point. */
     __attribute__((noreturn))
     static void trampoline_entry_point(uint64_t argOnInitialize, uint64_t argOnRun);
+
+#elif defined(JOBS_PLATFORM_SWITCH)
+
+    /** Trampoline function used to call the user-defined entry point. */
+    static nn::os::FiberType* trampoline_entry_point(void* arg);
 
 #endif
 
@@ -134,7 +141,10 @@ private:
     /** Stack space allocated to fiber context. */
     bool m_is_thread = false;
 
-#if defined(JOBS_PLATFORM_WINDOWS)
+    /** Stack space allocated to fiber context. */
+    void* m_fiber_context = nullptr;
+
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 
     /** Handle of platform defined fiber. */
     LPVOID m_fiber_handle = nullptr;
@@ -147,9 +157,13 @@ private:
     /** True if fiber handle is valid. */
     bool m_fiber_handle_created = false;
 
-    /** Stack space allocated to fiber context. */
-    void* m_fiber_context;
+#elif defined(JOBS_PLATFORM_SWITCH)
 
+    /** Handle of platform defined fiber. */
+    nn::os::FiberType m_fiber_handle;
+
+    /** True if fiber handle is valid. */
+    bool m_fiber_handle_created = false;
 
 #endif
 

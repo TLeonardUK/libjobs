@@ -69,7 +69,12 @@ struct frame_info
 // It should be noted that having a persistent job has pros and cons. The main benefit
 // is you don't have to waste time rescheduling it each frame, the downside is that
 // you cannot recycle fiber context's, so you end up with much larger memory requirements, 
-// requiring at least one fiber per tickable at all times.
+// requiring at least one fiber per tickable at all times. You also end up with more
+// syncronization overhead.
+
+// Toggle between persistent jobs and ones that are kicked per frame.
+#define PERSISTENT_JOBS 0
+
 template <typename super_class>
 class tickable
 {
@@ -101,12 +106,14 @@ public:
 
         // Setup our tickables job, which just calls the tick_loop() method.
         m_tick_job.set_tag(name);
-        m_tick_job.set_stack_size(16 * 1024);
+        m_tick_job.set_stack_size(1 * 1024);
         m_tick_job.set_priority(jobs::priority::low);
         m_tick_job.set_work([=]() { tick_loop(); });
+        m_tick_job.set_completion_counter(m_frame_info->frame_end_counter);
 
-        // Start up the tick task.
+#if PERSISTENT_JOBS
         m_tick_job.dispatch();
+#endif
     }
 
     // Will return a non-const pointer after the tickable has finished it's tick. 
@@ -127,6 +134,11 @@ public:
         return super_ptr;
     }
 
+    jobs::job_handle get_tick_job()
+    {
+        return m_tick_job;
+    }
+
 protected:
 
     // Implemented in derived classes to implement actual functionality.
@@ -137,6 +149,7 @@ private:
     // Core loop of the tickables job. 
     void tick_loop()
     {
+#if PERSISTENT_JOBS
         while (true)
         {
             // Wait for the next frame to start processing.
@@ -149,6 +162,7 @@ private:
 
                 m_frame_info->frame_counter.wait_for(frame + 1);
             }
+#endif
 
             // Perform any processing required.
             {
@@ -160,11 +174,12 @@ private:
             // Mark as complete for this frame.
             {
                 jobs_profile_scope(jobs::profile_scope_type::user_defined, "mark complete");
-
-                m_frame_info->frame_end_counter.add(1);
                 m_last_tick_frame.add(1);
             }
+
+#if PERSISTENT_JOBS
         }
+#endif
     }
 
 protected:
@@ -203,9 +218,9 @@ protected:
         //volatile double sum = 0;
         //for (int i = 0; i < 1000; i++) sum += atan2(i, i / 2);
 
-        // Here you would do some collision checking between entities.
+        //JOBS_PRINTF("Ticked Physics!");
 
-        //printf("physics_system[%zi]: ticked\n", m_tickable_index);
+        // Here you would do some collision checking between entities.
     }
 
 };
@@ -241,12 +256,11 @@ protected:
             }
         }
 
+        //JOBS_PRINTF("Ticked!\n");
+
         // Some dummy work.
         //volatile double sum = 0;
         //for (int i = 0; i < 1000; i++) sum += atan2(i, i / 2);
-
-        // Here you would perform typical entity processing, checking for collision, moving, etc.
-        //printf("entity[%zi]: ticked\n", m_tickable_index);
     }
 
 private:
@@ -279,11 +293,17 @@ void jobsMain()
     info.scheduler.set_max_dependencies(entity_count * 2);
     info.scheduler.set_max_jobs(entity_count * 2);
     info.scheduler.set_max_profile_scopes(entity_count * 20);
-    info.scheduler.add_fiber_pool(entity_count * 2, 16 * 1024);
-    //info.scheduler.set_profile_functions(profile_functions);
+#if !PERSISTENT_JOBS
+    info.scheduler.add_fiber_pool(4, 1 * 1024);
+#else
+    info.scheduler.add_fiber_pool(entity_count * 2, 1 * 1024);
+#endif
+#if defined(JOBS_USE_PROFILE_MARKERS)
+    info.scheduler.set_profile_functions(profile_functions);
+#endif
     info.scheduler.set_debug_output([](jobs::debug_log_verbosity level, jobs::debug_log_group group, const char* message)
     {
-        printf("%s", message);
+        JOBS_PRINTF("%s", message);
     }, jobs::debug_log_verbosity::message);
 
     // Initializes the scheduler.
@@ -317,12 +337,34 @@ void jobsMain()
         entities[i].init(&info, &physics, { }); //&entities[i - (entity_count/2)] });
     }
 
+    // General job handle list for dispatching as a batch.
+    std::vector<jobs::job_handle> handles;
+    for (int i = 0; i < entity_count; i++)
+    {
+        handles.push_back(entities[i].get_tick_job());
+    }
+    handles.push_back(physics.get_tick_job());
+
     // Main loop.
     double frame_duration_sum = 0;
+    double dispatch_duration_sum = 0;
     int frame_count = 0;
     while (true)
     {
         jobs::internal::stopwatch timer;
+
+#if !PERSISTENT_JOBS
+        timer.start();
+
+        {
+            jobs_profile_scope(jobs::profile_scope_type::user_defined, "dispatch", &info.scheduler);
+            info.scheduler.dispatch_batch(handles.data(), handles.size());
+        }
+
+        timer.stop();
+        dispatch_duration_sum += timer.get_elapsed_us() / 1000.0;
+#endif
+
         timer.start();
 
         // Log out the current frame index.
@@ -340,13 +382,14 @@ void jobsMain()
 
         if (++frame_count == 100)
         { 
-            printf("Frame Average (over 100): %.4f ms\n", frame_duration_sum / frame_count);
+            JOBS_PRINTF("Frame Average (over 100): execution=%.3f dispatch=%.3f\n", frame_duration_sum / frame_count, dispatch_duration_sum / frame_count);
             frame_duration_sum = 0.0f;
+            dispatch_duration_sum = 0.0f;
             frame_count = 0;
         }
 
         // Pause between frames so we can actually read the output :).
-        jobs::scheduler::sleep(10);
+        //jobs::scheduler::sleep(10);
     }
 
     // Expected execution:
