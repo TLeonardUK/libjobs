@@ -46,7 +46,7 @@
 #	error Unknown or unimplemented platform
 #endif
 
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
 #	define WIN32_LEAN_AND_MEAN  1
 #	define VC_EXTRALEAN 1
 #	include <Windows.h>
@@ -54,7 +54,7 @@
 
 #if defined(JOBS_PLATFORM_SWITCH)
 #   include <nn/os.h>
-#include <nn/nn_Log.h>
+#   include <nn/nn_Log.h>
 #endif
 
  /** @todo */
@@ -65,10 +65,9 @@
 #endif
 
  /** @todo */
-#if defined(JOBS_PLATFORM_WINDOWS) || \
-    defined(JOBS_PLATFORM_XBOX_ONE)
+#if defined(JOBS_PLATFORM_WINDOWS) ||  defined(JOBS_PLATFORM_XBOX_ONE)
 #   define JOBS_FORCE_INLINE __forceinline 
-#   define JOBS_FORCE_NO_INLINE __attribute__((noinline))
+#   define JOBS_FORCE_NO_INLINE __declspec(noinline)
 #elif defined(JOBS_PLATFORM_PS4) || \
       defined(JOBS_PLATFORM_SWITCH)
 #   define JOBS_FORCE_INLINE __attribute__((always_inline)) 
@@ -102,10 +101,6 @@
 #endif
 
  /** @todo */
-#if defined(JOBS_PLATFORM_SWITCH)
-#define JOBS_PRINTF(...) NN_LOG(__VA_ARGS__)
-#else
-#define JOBS_PRINTF(...) printf(__VA_ARGS__)
-#endif
+#define JOBS_PRINTF(...) jobs::internal::debug_print(__VA_ARGS__)
 
 #endif // __JOBS_DEFINES_H__

@@ -23,9 +23,22 @@
 #include <stdio.h>
 
 #if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
-#include <pix/include/WinPixEventRuntime/pix3.h>
+#   include <pix/include/WinPixEventRuntime/pix3.h>
 #elif defined(JOBS_PLATFORM_PS4)
-#include <razorcpu.h>
+#   include <razorcpu.h>
+#endif
+
+#if defined(JOBS_PLATFORM_XBOX_ONE)
+#   include <xdk.h>
+#   include <wrl.h>
+#   include <ppltasks.h>
+    using namespace concurrency;
+    using namespace Windows::ApplicationModel;
+    using namespace Windows::ApplicationModel::Core;
+    using namespace Windows::ApplicationModel::Activation;
+    using namespace Windows::UI::Core;
+    using namespace Windows::Foundation;
+    using namespace DirectX;
 #endif
 
 #if defined(JOBS_PLATFORM_PS4)
@@ -40,14 +53,70 @@ unsigned int sceLibcHeapExtendedAlloc = 1;
 
 void jobsMain();
 
-#if defined(JOBS_PLATFORM_SWITCH)
+// ----------------------------------------------------------------------------
+#if defined(JOBS_PLATFORM_XBOX_ONE)
+
+ref class ViewProvider sealed : public IFrameworkView
+{
+public:
+    virtual void Initialize(CoreApplicationView^ applicationView)
+    {
+        applicationView->Activated += ref new TypedEventHandler<CoreApplicationView^, IActivatedEventArgs^>(this, &ViewProvider::OnActivated);
+        CoreApplication::DisableKinectGpuReservation = true;
+    }
+
+    virtual void Uninitialize() {}
+    virtual void SetWindow(CoreWindow^ window) { }
+    virtual void Load(Platform::String^ entryPoint) {}
+
+    virtual void Run()
+    {
+        JOBS_PRINTF("View running\n");
+        jobsMain();
+    }
+
+protected:
+    void OnActivated(CoreApplicationView^ applicationView, IActivatedEventArgs^ args)
+    {
+        JOBS_PRINTF("Activated\n");
+        CoreWindow::GetForCurrentThread()->Activate();
+    }
+
+private:
+};
+
+ref class ViewProviderFactory : IFrameworkViewSource
+{
+public:
+    virtual IFrameworkView^ CreateView()
+    {
+        return ref new ViewProvider();
+    }
+};
+
+[Platform::MTAThread]
+int __cdecl main(Platform::Array<Platform::String^>^ /*argv*/)
+{
+    JOBS_PRINTF("==== libjobs example ====\n");
+    auto viewProviderFactory = ref new ViewProviderFactory();
+    CoreApplication::Run(viewProviderFactory);
+    JOBS_PRINTF("Finished\n");
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+#elif defined(JOBS_PLATFORM_SWITCH)
+
 extern "C" void nnMain()
 {
     JOBS_PRINTF("==== libjobs example ====\n");
     jobsMain();
     JOBS_PRINTF("Finished\n");
 }
+
+// ----------------------------------------------------------------------------
 #else
+
 int main()
 {
     JOBS_PRINTF("==== libjobs example ====\n");
@@ -55,6 +124,8 @@ int main()
     JOBS_PRINTF("Finished\n");
     return 0;
 }
+
+// ----------------------------------------------------------------------------
 #endif
 
 void framework_enter_scope(jobs::profile_scope_type type, const char* tag)

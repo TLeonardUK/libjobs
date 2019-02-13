@@ -26,10 +26,10 @@ endif()
 
 SET_TARGET_PROPERTIES(${PROJECT_NAME} PROPERTIES PREFIX "")
 
+get_target_property(app_output_name ${PROJECT_NAME} OUTPUT_NAME)
+
 # If we are building for switch, generate our nso/meta/package files.
 if (CMAKE_SYSTEM_NAME STREQUAL "Switch")
-
-	get_target_property(app_output_name ${PROJECT_NAME} OUTPUT_NAME)
 
 	# Generate NSO
 	add_custom_command(TARGET ${PROJECT_NAME} 
@@ -76,10 +76,40 @@ endif()
 # If on XBOX, run the xbox environment wrapper.
 if (CMAKE_SYSTEM_NAME STREQUAL "XboxOne")
 
-#	add_custom_target(...
-#		COMMAND cmd /c ${CMAKE_CURRENT_SOURCE_DIR}/wrapper.bat <real_command> args...
-#	)
+	set(XBOX_OUTPUT_FOLDER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${app_output_name}.app")
 
+	# Override output directory.	
+	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${XBOX_OUTPUT_FOLDER}")
+	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${XBOX_OUTPUT_FOLDER}")
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${XBOX_OUTPUT_FOLDER}")
+
+	# Create output folder
+	file(MAKE_DIRECTORY ${XBOX_OUTPUT_FOLDER})
+
+	# Change output directory.
+
+	# Copy over all resources.
+	configure_file(${libjobs_SOURCE_DIR}/docs/examples/common/xboxone/Logo.png ${XBOX_OUTPUT_FOLDER}/Logo.png COPYONLY)
+	configure_file(${libjobs_SOURCE_DIR}/docs/examples/common/xboxone/SmallLogo.png ${XBOX_OUTPUT_FOLDER}/SmallLogo.png COPYONLY)
+	configure_file(${libjobs_SOURCE_DIR}/docs/examples/common/xboxone/SplashScreen.png ${XBOX_OUTPUT_FOLDER}/SplashScreen.png COPYONLY)
+	configure_file(${libjobs_SOURCE_DIR}/docs/examples/common/xboxone/StoreLogo.png ${XBOX_OUTPUT_FOLDER}/StoreLogo.png COPYONLY)
+	configure_file(${libjobs_SOURCE_DIR}/docs/examples/common/xboxone/WideLogo.png ${XBOX_OUTPUT_FOLDER}/WideLogo.png COPYONLY)
+
+	# Copy over exe
+	#configure_file(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${app_output_name}.exe ${XBOX_OUTPUT_FOLDER}/${app_output_name}.exe COPYONLY)
+
+	# Copy over appx manifest and replace appropriate tokens.	
+	configure_file(${libjobs_SOURCE_DIR}/docs/examples/common/xboxone/Package.appxmanifest ${XBOX_OUTPUT_FOLDER}/AppXManifest.xml)
+
+	# Copy over era.xvd
+	configure_file(${XDK_ROOT}/sideload/era.xvd ${XBOX_OUTPUT_FOLDER}/era.xvd COPYONLY)
+
+	# Generate appxdata.
+	add_custom_command(TARGET ${PROJECT_NAME} 
+		POST_BUILD
+		COMMAND "${XDK_COMMON_ROOT}/bin/makepkg.exe" "appdata" "/f" "${XBOX_OUTPUT_FOLDER}/AppXManifest.xml" "/pd" "${XBOX_OUTPUT_FOLDER}"
+	)
+	
 endif()
 
 if (USE_PIX)

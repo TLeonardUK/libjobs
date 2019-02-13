@@ -47,7 +47,7 @@ void debug_output(
 // own allocators.
 void* user_alloc(size_t size, size_t alignment)
 {
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
     void* ptr = _aligned_malloc(size, alignment);
 #else
     void* ptr = memalign(alignment, size);

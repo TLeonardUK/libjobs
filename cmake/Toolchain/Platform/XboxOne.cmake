@@ -38,3 +38,11 @@ set(CMAKE_SHARED_LIBRARY_SUFFIX ".lib")
 set(CMAKE_SHARED_MODULE_SUFFIX  ".lib")
 set(CMAKE_STATIC_LIBRARY_SUFFIX ".lib")
 SET(CMAKE_C_OUTPUT_EXTENSION	".obj")
+
+# General compiler behaviour. Annoyingly this has to be here not in the 
+# toolchain file -_-
+SET(CMAKE_OUTPUT_CXX_FLAG "-OUT:")
+SET(CMAKE_INCLUDE_FLAG_CXX "-I")
+SET(CMAKE_INCLUDE_FLAG_CXX_SEP "")
+SET(CMAKE_LIBRARY_PATH_FLAG "/LIBPATH:")
+SET(CMAKE_LINK_LIBRARY_FLAG "-l")

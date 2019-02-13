@@ -339,9 +339,10 @@ void jobsMain()
 
     // General job handle list for dispatching as a batch.
     std::vector<jobs::job_handle> handles;
+    handles.resize(entity_count);
     for (int i = 0; i < entity_count; i++)
     {
-        handles.push_back(entities[i].get_tick_job());
+        handles[i] = entities[i].get_tick_job();
     }
     handles.push_back(physics.get_tick_job());
 

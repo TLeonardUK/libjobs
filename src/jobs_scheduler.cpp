@@ -139,7 +139,7 @@ scheduler::~scheduler()
 
 void* scheduler::default_alloc(size_t size, size_t alignment)
 {
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
     void* ptr = _aligned_malloc(size, alignment);
 #else
     void* ptr = memalign(alignment, size);
@@ -149,7 +149,7 @@ void* scheduler::default_alloc(size_t size, size_t alignment)
 
 void scheduler::default_free(void* ptr)
 {
-#if defined(JOBS_PLATFORM_WINDOWS)
+#if defined(JOBS_PLATFORM_WINDOWS) || defined(JOBS_PLATFORM_XBOX_ONE)
     _aligned_free(ptr);
 #else
     free(ptr);
@@ -809,7 +809,7 @@ void scheduler::write_log(debug_log_verbosity level, debug_log_group group, cons
     // we're just memsetting this here. Needs to be done correctly.
     memset(m_log_format_buffer, 0, max_log_size);
     snprintf(m_log_format_buffer, max_log_size - 1, "[%08x][%p][%s] %s: %s\n", 
-        std::this_thread::get_id(),
+        *reinterpret_cast<unsigned int*>(&std::this_thread::get_id()),
         m_worker_thread_state,
         internal::debug_log_group_strings[(int)group], 
         internal::debug_log_verbosity_strings[(int)level], 

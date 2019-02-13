@@ -21,8 +21,37 @@
 
 #include "jobs_utils.h"
 
+#include <stdarg.h>
+
 namespace jobs {
 namespace internal {
+
+void debug_print(const char* format, ...)
+{
+    const size_t max_length = 512;
+
+    char buffer[max_length];
+
+    va_list list;
+    va_start(list, format);
+
+    // @todo
+    // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
+    // we're just memsetting this here. Needs to be done correctly.
+    memset(buffer, 0, max_length);
+    vsnprintf(buffer, max_length - 1, format, list);
+
+    va_end(list);
+
+#if defined(JOBS_PLATFORM_SWITCH)
+    NN_LOG("%s", buffer);
+#elif defined(JOBS_PLATFORM_XBOX_ONE) || defined(JOBS_PLATFORM_WINDOWS)
+    OutputDebugStringA(buffer);
+    printf("%s", buffer);
+#else
+    printf("%s", buffer);
+#endif
+}
 
 void stopwatch::start()
 {

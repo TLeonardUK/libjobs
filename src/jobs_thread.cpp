@@ -80,7 +80,7 @@ result thread::init(const thread_entry_point& entry_point, const char* name, siz
     // Filter affinity to only valid core indices or switch will complain.
     core_affinity = core_affinity & nn::os::GetThreadAvailableCoreMask();
 
-    int ideal_core = jobs::internal::getFirstSetBitPos(core_affinity) - 1;
+    int ideal_core = jobs::internal::get_first_set_bit_pos(core_affinity) - 1;
 
     std::thread new_thread([=]() {
         nn::os::SetThreadName(nn::os::GetCurrentThread(), name_storage);

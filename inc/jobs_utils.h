@@ -52,8 +52,11 @@ namespace jobs {
 namespace internal {
 
 /** @todo */
+void debug_print(const char* format, ...);
+
+/** @todo */
 template <typename data_type>
-data_type getFirstSetBitPos(data_type n)
+data_type get_first_set_bit_pos(data_type n)
 {
     return log2(n & -n) + 1;
 }
