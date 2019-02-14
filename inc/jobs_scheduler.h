@@ -289,9 +289,9 @@ public:
      *
      * This call is blocking.
      *
-     * \param in_timeout If provided, this function will wait a maximum of this time. If
-     *                   the function returns due to a timeout the result provided will be
-     *                   result::timeout.
+     * \param wait_timeout If provided, this function will wait a maximum of this time. If
+     *                     the function returns due to a timeout the result provided will be
+     *                     result::timeout.
      *
      * \return Value indicating the success of this function.
      */
@@ -474,7 +474,7 @@ protected:
     /**
      * \brief Requeues a quantity of jobs that have previously been picked up for execution.
      *
-     * This works the same as @requeue_job except it combines a lot of the overhead to reduce
+     * This works the same as \ref requeue_job except it combines a lot of the overhead to reduce
      * the overall execution time.
      *
      * \param job_array Array of job handles to requeue.
@@ -526,9 +526,9 @@ protected:
      * from any other place, it will block.
      *
      * \param job_handle Job to wait for completion of.
-     * \param in_timeout If provided, this function will wait a maximum of this time. If
-     *                   the function returns due to a timeout the result provided will be
-     *                   result::timeout.
+     * \param wait_timeout If provided, this function will wait a maximum of this time. If
+     *                     the function returns due to a timeout the result provided will be
+     *                     result::timeout.
      *
      * \return Value indicating the success of this function.
      */
@@ -575,7 +575,7 @@ protected:
     result allocate_fiber(size_t required_stack_size, size_t& fiber_index, size_t& fiber_pool_index);
 
     /**
-     * \brief Frees a fiber allocated with @allocate_fiber, so it can be recycled later.
+     * \brief Frees a fiber allocated with \ref allocate_fiber, so it can be recycled later.
      *
      * \param fiber_index Index of allocated fiber.
      * \param fiber_pool_index Pool index of allocated fiber.
@@ -632,7 +632,7 @@ protected:
     result alloc_scope(internal::profile_scope_definition*& output);
 
     /**
-     * \brief Frees a profile scope previously allocated with @alloc_scope.
+     * \brief Frees a profile scope previously allocated with \ref alloc_scope.
      *
      * \param scope Scope to free.
      *
@@ -690,7 +690,7 @@ protected:
     void notify_job_complete();
 
     /**
-     * \brief Blocks until a new job has been singled as being available by @notify_job_available.
+     * \brief Blocks until a new job has been singled as being available by \ref notify_job_available.
      */
     void wait_for_job_available();
 

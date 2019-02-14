@@ -482,7 +482,7 @@ result scheduler::init()
         {
             new(instance) internal::thread(m_memory_functions);
 
-            size_t core_affinity = (1 << (thread_index % logical_cores));
+            size_t core_affinity = ((size_t)1 << (thread_index % logical_cores));
             thread_index++;
 
             char buffer[128];
@@ -1420,7 +1420,7 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)
         {
             internal::job_definition& other_job_def = get_job_definition(job_handle_in.m_index);
 
-            internal::spinwait_shared_lock lock(other_job_def.wait_list.get_mutex());
+            internal::optional_shared_lock<internal::spinwait_mutex> lock(other_job_def.wait_list.get_mutex());
 
             // Check it hasn't completed while acquiring lock.
             if (other_job_def.status == internal::job_status::completed)

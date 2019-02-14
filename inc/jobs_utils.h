@@ -43,33 +43,68 @@
 #include <x86intrin.h>
 #endif
 
-/** @todo */
+/**
+* \brief Returns minimum of two numbers.
+*
+* \param x First number.
+* \param y Second number.
+*
+* \return Minimum of x and y.
+*/
 #define JOBS_MIN(x, y) ((x) < (y) ? (x) : (y))
 
-/** @todo */
+/**
+* \brief Returns maximum of two numbers.
+*
+* \param x First number.
+* \param y Second number.
+*
+* \return Maximum of x and y.
+*/
 #define JOBS_MAX(x, y) ((x) > (y) ? (x) : (y))
 
 namespace jobs {
 namespace internal {
-
-/** @todo */
+    
+/**
+* \brief Prints a meessage to debug output in a cross-platform way.
+*
+* \param format printf format message.
+* \param ... Arguments to format message with.
+*/
 void debug_print(const char* format, ...);
 
-/** @todo */
+/**
+* \brief Gets the index of the highest bit set in a given value.
+*
+* \param value Value to search.
+*
+* \return Index of highest bit set in value.
+*/
 template <typename data_type>
-data_type get_first_set_bit_pos(data_type n)
+data_type get_first_set_bit_pos(data_type value)
 {
-    return log2(n & -n) + 1;
+    return log2(value & -value) + 1;
 }
 
-/** @todo */
+/**
+* \brief Performs RAII scope locking of a mutex. Similar to scope_lock except
+*        mutex can be optionally acquired based on parameter passed to constructor.
+*
+* \tparam mutex_type Class of mutex this lock should operate on.
+*/
 template <typename mutex_type>
 struct optional_lock
 {
 public:
 
-    /** @todo */
-    optional_lock(mutex_type& mutex, bool should_lock)
+    /**
+    * \brief Constructor
+    *
+    * \param mutex Mutex that we should acquire a lock on.
+    * \param should_lock If we should acquire a lock.
+    */
+    optional_lock(mutex_type& mutex, bool should_lock = true)
         : m_mutex(mutex)
         , m_locked(should_lock)
     {
@@ -79,7 +114,7 @@ public:
         }
     }
 
-    /** @todo */
+    /** Destructor. */
     ~optional_lock()
     {
         if (m_locked)
@@ -90,22 +125,34 @@ public:
 
 private:
 
-    /** @todo */
+    /** Mutex we are operating on. */
     mutex_type& m_mutex;
 
-    /** @todo */
+    /** True if we have acquired a lock on \ref m_mutex */
     bool m_locked;
 
 };
 
-/** @todo */
+/**
+* \brief Performs RAII scope shared locking of a mutex. Similar to scope_lock except
+*        mutex can be optionally acquired based on parameter passed to constructor.
+*
+* This is the same as optional_lock except it attempts to get a shared_lock (see std::shared_mutex).
+*
+* \tparam mutex_type Class of mutex this lock should operate on.
+*/
 template <typename mutex_type>
 struct optional_shared_lock
 {
 public:
 
-    /** @todo */
-    optional_shared_lock(mutex_type& mutex, bool should_lock)
+    /**
+    * \brief Constructor
+    *
+    * \param mutex Mutex that we should acquire a lock on.
+    * \param should_lock If we should acquire a lock.
+    */
+    optional_shared_lock(mutex_type& mutex, bool should_lock = true)
         : m_mutex(mutex)
         , m_locked(should_lock)
     {
@@ -115,7 +162,7 @@ public:
         }
     }
 
-    /** @todo */
+    /** Destructor. */
     ~optional_shared_lock()
     {
         if (m_locked)
@@ -126,10 +173,10 @@ public:
 
 private:
 
-    /** @todo */
+    /** Mutex we are operating on. */
     mutex_type& m_mutex;
 
-    /** @todo */
+    /** True if we have acquired a lock on \ref m_mutex */
     bool m_locked;
 
 };
@@ -141,37 +188,52 @@ struct stopwatch
 {
 public:
 
-    /** @todo */
+    /** Starts measuring time. */
     void start();
 
-    /** @todo */
+    /** Stops measuring time. */
     void stop();
 
-    /** @todo */
+    /**
+    * \brief Number of elapsed milliseconds between \ref start and \ref stop calls.
+    *
+    * If stop has not been called yet, this gives a running value.
+    *
+    * \return Number of elapsed milliseconds.
+    */
     uint64_t get_elapsed_ms();
 
-    /** @todo */
+    /**
+    * \brief Number of elapsed microseconds between \ref start and \ref stop calls.
+    *
+    * If stop has not been called yet, this gives a running value.
+    *
+    * \return Number of elapsed microseconds.
+    */
     uint64_t get_elapsed_us();
 
 private:
 
-    /** @todo */
+    /** Timestamp when \ref start was called. */
     std::chrono::high_resolution_clock::time_point m_start_time;
 
-    /** @todo */
+    /** Timestamp when \ref stop was called. */
     std::chrono::high_resolution_clock::time_point m_end_time;
 
-    /** @todo */
+    /** If \ref stop has been called and \ref m_end_time is valid. */
     bool m_has_end = false;
 
 };
 
-/** @todo */
+/**
+ *  \brief Similar to a normal mutex except control is never passed to the 
+ *         OS when mutex is contented, instead a spinwait is performed.
+ */
 struct spinwait_mutex
 {
 public:
 
-    /** @todo */
+    /** Acquires a lock on the mutex. */
     JOBS_FORCE_INLINE void lock()
     {
         while (true)
@@ -188,19 +250,19 @@ public:
         }
     }
 
-    /** @todo */
+    /** Release a lock on the mutex. */
     JOBS_FORCE_INLINE void unlock()
     {
         m_locked = 0;
     }
 
-    /** @todo */
+    /** Acquires a shared lock on the mutex. */
     JOBS_FORCE_INLINE void lock_shared()
     {
         lock();
     }
 
-    /** @todo */
+    /** Release a shared lock on the mutex. */
     JOBS_FORCE_INLINE void unlock_shared()
     {
         unlock();
@@ -208,82 +270,17 @@ public:
 
 private:
 
-    /** @todo */
+    /** Atomic value representing lock state. */
     std::atomic<uint8_t> m_locked{0};
 
 }; 
 
-/** @todo */
-struct spinwait_lock
-{
-public:
-
-    /** @todo */
-    spinwait_lock(spinwait_mutex& mutex, bool do_lock = true)
-        : m_mutex(mutex)
-        , m_do_lock(do_lock)
-    {
-        if (m_do_lock)
-        {
-            m_mutex.lock();
-        }
-    }
-
-    /** @todo */
-    ~spinwait_lock()
-    {
-        if (m_do_lock)
-        {
-            m_mutex.unlock();
-        }
-    }
-
-private:
-    
-    /** @todo */
-    spinwait_mutex& m_mutex;
-
-    /** @todo */
-    bool m_do_lock;
-
-};
-
-/** @todo */
-struct spinwait_shared_lock
-{
-public:
-
-    /** @todo */
-    spinwait_shared_lock(spinwait_mutex& mutex, bool do_lock = true)
-        : m_mutex(mutex)
-        , m_do_lock(do_lock)
-    {
-        if (m_do_lock)
-        {
-            m_mutex.lock_shared();
-        }
-    }
-
-    /** @todo */
-    ~spinwait_shared_lock()
-    {
-        if (m_do_lock)
-        {
-            m_mutex.unlock_shared();
-        }
-    }
-
-private:
-
-    /** @todo */
-    spinwait_mutex& m_mutex;
-
-    /** @todo */
-    bool m_do_lock;
-
-};
-
-/** @todo */
+/**
+ * \brief Thread-safe list that supports having multiple writers but a single reader.
+ *
+ * This is primary used for things like wait-queues where multiple threads will want to add things to it,
+ * but only a single-thread would want to read (and block writes during the read). 
+ */
 template <typename data_type>
 struct multiple_writer_single_reader_list
 {

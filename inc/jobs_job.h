@@ -69,7 +69,7 @@ protected:
     /** True if this job context has been assigned a fiber. */
     bool has_fiber = false;
 
-    /** If the fiber assigned to this context is held in @raw_fiber or indirectly through @fiber_index / @fiber_pool_index. */
+    /** If the fiber assigned to this context is held in \ref raw_fiber or indirectly through \ref fiber_index / \ref fiber_pool_index. */
     bool is_fiber_raw;
 
     /** Index of the fiber (inside its pool) assigned to this context. */
@@ -336,7 +336,7 @@ public:
      * \brief Dispatches this job, causing it to be queued for execution. 
      *
      * If dispatching a large number of jobs in one go, consider using the
-     * more performant @jobs::scheduler::dispatch_batch.
+     * more performant \ref jobs::scheduler::dispatch_batch.
      *
      * \return Value indicating the success of this function.
      */
@@ -388,8 +388,7 @@ namespace internal {
 class job_definition
 {
 public:
-    scheduler;
-
+    
     /**
      * \brief Constructor
      *
@@ -429,7 +428,7 @@ public:
     /** Handle to counter we are currently waiting for. */
     counter_handle wait_counter;
 
-    /** Value we are waiting for @wait_counter to reach to ready.  */
+    /** Value we are waiting for \ref wait_counter to reach to ready.  */
     size_t wait_counter_value;
 
     /** If true, the value we are waiting for, will be removed from the counter once its reached. */
@@ -473,7 +472,7 @@ public:
     static const size_t max_tag_length = 64;
 
     /** Descriptive tag that can be assigned to this job. */
-    char tag[max_tag_length] = 0;
+    char tag[max_tag_length] = { 0 };
 
 };
 
@@ -488,7 +487,7 @@ public:
     /**
      * \brief Constructor
      *
-     * \param index Index into the scheduler's pool where this dependencies data is held.
+     * \param in_pool_index Index into the scheduler's pool where this dependencies data is held.
      */
     job_dependency(size_t in_pool_index)
         : pool_index(in_pool_index)

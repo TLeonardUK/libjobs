@@ -427,7 +427,7 @@ bool counter_handle::add_to_wait_list(internal::job_definition* job_def)
     
     if (job_def->wait_counter_remove_value)
     {
-        internal::spinwait_lock lock(def.wait_list.get_mutex());
+        internal::optional_lock<internal::spinwait_mutex> lock(def.wait_list.get_mutex());
 
         // Value high enough to remove? We don't need to wait. 
         if (modify_value(job_def->wait_counter_value, false, true, false))
