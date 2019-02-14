@@ -38,7 +38,6 @@
     using namespace Windows::ApplicationModel::Activation;
     using namespace Windows::UI::Core;
     using namespace Windows::Foundation;
-    using namespace DirectX;
 #endif
 
 #if defined(JOBS_PLATFORM_PS4)
@@ -71,14 +70,12 @@ public:
 
     virtual void Run()
     {
-        JOBS_PRINTF("View running\n");
         jobsMain();
     }
 
 protected:
     void OnActivated(CoreApplicationView^ applicationView, IActivatedEventArgs^ args)
     {
-        JOBS_PRINTF("Activated\n");
         CoreWindow::GetForCurrentThread()->Activate();
     }
 

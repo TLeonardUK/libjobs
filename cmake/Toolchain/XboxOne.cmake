@@ -95,7 +95,8 @@ add_definitions(-D_HAS_EXCEPTIONS=0)
 # the off chance one of our sub-projects needs to modify them.
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /GR")   # RTTI enabled 
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /EHsc") # Exception handling enabled
-SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /Zi /FS")	 # Debug info stored in pdb
+SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /Zi /FS")	# Debug info stored in pdb
+SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /ZW")		# Windows Runtime Support
 
 # Runtime library/iterator debug level.
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -143,7 +144,7 @@ SET(DEFAULT_LIBS "COMBASE.LIB KERNELX.LIB UUID.LIB /NODEFAULTLIB:ADVAPI32.LIB /N
 set(CMAKE_CXX_COMPILE_OBJECT
     "<CMAKE_CXX_COMPILER> /nologo <DEFINES> <INCLUDES> <FLAGS> /Fo<OBJECT> -c <SOURCE>")
 set(CMAKE_CXX_LINK_EXECUTABLE
-    "\"${CMAKE_LINKER}\" /nologo <OBJECTS> /out:<TARGET> /implib:<TARGET_IMPLIB> /pdb:<TARGET_PDB> /machine:X64 /subsystem:console /TLBID:1 /DYNAMICBASE /NXCOMPAT /MANIFEST:NO <LINK_LIBRARIES> ${DEFAULT_LIBS}")
+    "\"${CMAKE_LINKER}\" /nologo <OBJECTS> /out:<TARGET> /implib:<TARGET_IMPLIB> /pdb:<TARGET_PDB> /machine:X64 /subsystem:Windows /TLBID:1 /DYNAMICBASE /NXCOMPAT /MANIFEST:NO <LINK_LIBRARIES> ${DEFAULT_LIBS}")
 set(CMAKE_CXX_ARCHIVE_CREATE 
 	"<CMAKE_AR> <OBJECTS> /OUT:<TARGET> <LINK_FLAGS> /NOLOGO /MACHINE:X64")
 set(CMAKE_CXX_ARCHIVE_APPEND 
