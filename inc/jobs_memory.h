@@ -62,7 +62,10 @@ typedef std::function<void(void* ptr)> memory_free_function;
  */
 struct memory_functions
 {
+    /** Function to use for allocation of memory. */
     memory_alloc_function user_alloc = nullptr;
+
+    /** Function to use for deallocation of memory. */
     memory_free_function user_free = nullptr;
 };
 

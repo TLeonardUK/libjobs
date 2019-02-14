@@ -24,7 +24,7 @@ project(libjobs C CXX)
 include(${CMAKE_SOURCE_DIR}/cmake/Common.cmake)
 
 # Build options.
-option(BUILD_DOC "Build documentation" OFF)
+option(BUILD_DOC "Build documentation" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 
 # Version
@@ -69,7 +69,7 @@ add_library(${PROJECT_NAME} STATIC
 include(${libjobs_SOURCE_DIR}/cmake/CommonLibrary.cmake)
 
 # Generate documentation if available.
-if (BUILD_DOC EQUAL ON) 
+if (BUILD_DOC) 
 	if (NOT CMAKE_BUILD_TYPE MATCHES "Debug")
 		find_package(Doxygen)
 		if (DOXYGEN_FOUND)

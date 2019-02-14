@@ -74,16 +74,16 @@ enum class result
  */
 enum class priority
 {
-    critical    = 1 << 0,          /**< Critical priority jobs */
-    high        = 1 << 1,            /**< High priority jobs */
-    normal      = 1 << 2,           /**< Medium priority jobs */
-    low         = 1 << 3,           /**< Low priority jobs */
-    slow        = 1 << 4,           /**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */
+    critical     = 1 << 0,          /**< Critical priority jobs */
+    high         = 1 << 1,          /**< High priority jobs */
+    normal       = 1 << 2,          /**< Medium priority jobs */
+    low          = 1 << 3,          /**< Low priority jobs */
+    slow         = 1 << 4,          /**< Very slow and long running jobs should be assigned this priority, it allows easy segregation to prevent saturating thread pools. */
     
-    count         = 5,        
+    count        = 5,        
 
     all          = 0xFFFF,          /**< All priorities together. */  
-    all_but_slow = 0xFFFF & ~slow , /**< All priorities together except slow. */  
+    all_but_slow = 0xFFFF & ~slow,  /**< All priorities together except slow. */  
 };
 
 /**
@@ -124,11 +124,11 @@ enum class profile_scope_type
 
 namespace internal {
 
-    /** String representation of values in enum debug_log_verbosity. */
-    extern const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count];
+/** String representation of values in enum debug_log_verbosity. */
+extern const char* debug_log_verbosity_strings[(int)debug_log_verbosity::count];
 
-    /** String representation of values in enum debug_log_group. */
-    extern const char* debug_log_group_strings[(int)debug_log_group::count];
+/** String representation of values in enum debug_log_group. */
+extern const char* debug_log_group_strings[(int)debug_log_group::count];
 
 }; /* namespace internal */
 

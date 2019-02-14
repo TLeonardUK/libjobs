@@ -66,10 +66,6 @@ void fiber::destroy()
         m_fiber_handle_created = false;
     }
 
-#elif defined(JOBS_PLATFORM_XBOXONE)
-
-    // @todo
-
 #else
 
 #	error Unimplemented platform

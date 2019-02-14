@@ -52,19 +52,19 @@ typedef std::function<void()> callback_scheduler_function;
  */
 struct callback_definition
 {
-    /** @todo */
+    /** If this callback slot is actively in-use. */
     bool active = false;
 
-    /** @todo */
+    /** How many times this callback has been recycled. Used to ensure cancel requests don't cancel recycled callbacks. */
     size_t generation = 0;
 
-    /** @todo */
+    /** Stopwatch used for measuring when timeout elapses. */
     stopwatch stopwatch;
 
-    /** @todo */
+    /** Duration of time that must elapse before callback is invoked. */
     timeout duration;
 
-    /** @todo */
+    /** Callback to invoke after duration elapses. */
     callback_scheduler_function callback = nullptr;
 };
 
@@ -114,10 +114,14 @@ public:
 
 private:
 
-    /** @todo */
+    /** Iterates through all pending callbacks and invokes and destroys those who's timeout has elapsed. */
     void run_callbacks();
 
-    /** @todo */
+    /** 
+     * \brief Gets the number of milliseconds until the next callback needs to be invoked.
+     *
+     * \return Number of milliseconds until next callback must be invoked.
+     */
     uint64_t get_ms_till_next_callback();
 
 private:
@@ -137,10 +141,10 @@ private:
     /** Number of callbacks pending. */
     fixed_pool<callback_definition> m_callback_pool;
 
-    /** Shutdown flag. */
+    /** True if this class is currently being shutdown. */
     bool m_shutting_down = false;
 
-    /** Owner of this class */
+    /** Scheduler that owns this class */
     jobs::scheduler* m_scheduler = nullptr;
 
 };

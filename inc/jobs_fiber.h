@@ -63,8 +63,8 @@ public:
     /**
      * Constructor.
      *
-     * \param memory_function Scheduler defined memory functions used to 
-     *						  override default memory allocation behaviour.
+     * \param memory_functions Scheduler defined memory functions used to 
+     *						   override default memory allocation behaviour.
      */
     fiber(const memory_functions& memory_functions);
 

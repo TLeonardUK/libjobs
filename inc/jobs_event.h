@@ -19,19 +19,6 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-// @todo: reimplement this to just use a counter internally, 
-//        less implementation work.
-
-/*
-event.signal = counter.set(1)
-event.reset = counter.set(0)
-
-auto-reset:
-    event.wait = counter.remove(1)
-manual-reset:
-    event.wait = counter.wait_for(1)
-*/
-
 /**
  *  \file jobs_event.h
  *
@@ -58,11 +45,11 @@ namespace jobs {
  *
  * Events in this library work in two ways. Manual-reset and auto-reset. 
  *
- * For manual-reset events, all fibers that wait on the event will be allowed to continue 
+ * For manual-reset events, all jobs that wait on the event will be allowed to continue 
  * once the event is signaled, and will continue being allowed until the event is manually reset
  * from elsewhere.
  *
- * Auto-reset events work similarly to manual-reset, except after the first thread is woken up 
+ * Auto-reset events work similarly to manual-reset, except after the first jobs is woken up 
  * on signal, the event is automatically (and atomically) reset.
  */
 class event_handle
@@ -71,36 +58,93 @@ protected:
 
     friend class scheduler;
 
-    /** @todo */
+    /**
+     * \brief Constructor
+     *
+     * \param scheduler Scheduler that owns this counter.
+     * \param counter Handle to the counter used internally to implement event functionality.
+     * \param auto_reset If event should reset its signaled state after waking up a waiting job.
+     */
     event_handle(scheduler* scheduler, const counter_handle& counter, bool auto_reset);
 
 public:
 
-    /** @todo */
+    /** Constructor */
     event_handle();
 
-    /** @todo */
+    /**
+     * \brief Copy constructor
+     *
+     * \param other Object to copy.
+     */
     event_handle(const event_handle& other);
 
-    /** @todo */
+    /** Destructor */
     ~event_handle();
 
-    /** @todo */
-    event_handle& operator=(const event_handle& other);
-
-    /** @todo */
+    /**
+     * \brief Waits for this event to be signaled.
+     *
+     * If called from a job this is non-blocking, and will queue the job
+     * for execution after the event is signaled. If called
+     * from any other place, it will block.
+     *
+     * \param in_timeout If provided, this function will wait a maximum of this time. If
+     *                   the function returns due to a timeout the result provided will be
+     *                   result::timeout.
+     *
+     * \return Value indicating the success of this function.
+     */
     result wait(timeout in_timeout = timeout::infinite);
 
-    /** @todo */
+    /**
+     * \brief Signals this event.
+     *
+     * If this event is manual-reset, all waiting jobs causes will be readied, and
+     * all future jobs waits will be allowed to continue until the event is reset.
+     *
+     * If this event is auto-reset, one job will be readied and the signal state will
+     * be automatically reset.
+     *
+     * \return Value indicating the success of this function.
+     */
     result signal();
 
-    /** @todo */
+    /**
+     * \brief Resets the signal state of this event.
+     *
+     * This function should only be called for manual-reset events, calling it on
+     * an auto-reset event performs no operation.
+     *
+     * \return Value indicating the success of this function.
+     */
     result reset();
 
-    /** @todo */
+    /**
+     * \brief Assignment operator
+     *
+     * \param other Object to assign.
+     *
+     * \return Reference to this object.
+     */
+    event_handle& operator=(const event_handle& other);
+
+    /**
+     * \brief Equality operator
+     *
+     * \param rhs Object to compare against.
+     *
+     * \return True if objects are equal.
+     */
     bool operator==(const event_handle& rhs) const;
 
-    /** @todo */
+    /**
+     * \brief Inequality operator
+     *
+     * \param rhs Object to compare against.
+     *
+     * \return True if objects are inequal.
+     */
     bool operator!=(const event_handle& rhs) const;
 
 private:
@@ -108,10 +152,10 @@ private:
     /** Pointer to the owning scheduler of this handle. */
     scheduler* m_scheduler = nullptr;
 
-    /** @todo */
+    /** Handle of the counter used internally to implement event functionality. */
     counter_handle m_counter;
 
-    /** @todo */
+    /** If this event should reset its signaled state after waking up a waiting job.. */
     bool m_auto_reset = false;
 
 };

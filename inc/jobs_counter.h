@@ -52,27 +52,27 @@ class counter_definition
 {
 public:
 
-    /** @todo */
+    /** Constructor */
     counter_definition();
 
-    /** @todo */
+    /** Resets data so definition can be recycled. */
     void reset();
 
 public:	
 
-    /** @todo */
+    /** Number of handles that reference this counter. Used to track and recycle counters when no longer used. */
     std::atomic<size_t> ref_count;
 
-    /** @todo */
+    /** Value the counter currently holds. */
     std::atomic<size_t> value;
 
-    /** @todo */
+    /** Condition variable that is notified when a value is changed while counter is being waited on.  */
     std::condition_variable_any value_cvar;
 
-    /** @todo */
+    /** Mutex to use in tandem with value_cvar to wait on. */
     std::mutex value_cvar_mutex;
 
-    /** @todo */
+    /** List of all jobs that are waiting on this counter to get to equal a value. */
     multiple_writer_single_reader_list<internal::job_definition*> wait_list;
 
 };
@@ -102,74 +102,185 @@ protected:
 
     friend class scheduler;
 
-    /** @todo */
+    /**
+     * \brief Constructor
+     *
+     * \param scheduler Scheduler that owns this counter.
+     * \param index Index into the scheduler's counter pool where this counters data is held.
+     */
     counter_handle(scheduler* scheduler, size_t index);
 
-    /** @todo */
+    /** Increases the reference count of this counter. */
     void increase_ref();
 
-    /** @todo */
+    /** Decreases the reference count of this counter. When it reaches zero, it will be disposed of. */
     void decrease_ref();
 
 public:
 
-    /** @todo */
+    /** Constructor */
     counter_handle();
 
-    /** @todo */
+    /**
+     * \brief Copy constructor
+     *
+     * \param other Object to copy.
+     */
     counter_handle(const counter_handle& other);
 
-    /** @todo */
+    /** Destructor */
     ~counter_handle();
 
-    /** @todo */
-    counter_handle& operator=(const counter_handle& other);
-
-    /** @todo */
+    /**
+     * \brief Waits for this counter to reach a specific value. 
+     *        
+     * If called from a job this is non-blocking, and will queue the job
+     * for execution after the counter reaches the given value. If called
+     * from any other place, it will block.
+     *
+     * \param value Value counter needs to reach to continue.
+     * \param in_timeout If provided, this function will wait a maximum of this time. If 
+     *                   the function returns due to a timeout the result provided will be
+     *                   result::timeout.
+     *
+     * \return Value indicating the success of this function.
+     */
     result wait_for(size_t value, timeout in_timeout = timeout::infinite);
 
-    /** @todo */
+    /**
+     * \brief Adds a given value to this counter.
+     *
+     * Causes any waiting jobs to be readied if the resulting value is equal to
+     * the value they are waiting for.
+     *
+     * \param value Value to add to the counter.
+     *
+     * \return Value indicating the success of this function.
+     */
     result add(size_t value);
 
-    /** @todo */
+    /**
+     * \brief Removes the given value from this counter.
+     *
+     * Values of counters can never be negative. If this operation would make
+     * the value go negative, the job will be queued for execution (or the thread blocked if called from a non-job)
+     * until the counter has a value high enough that this operation would not cause a negative.
+     *
+     * Causes any waiting jobs to be readied if the resulting value is equal to
+     * the value they are waiting for.
+     *
+     * \param value Value to remove from counter.
+     * \param in_timeout If provided, this function will wait a maximum of this time. If
+     *                   the function returns due to a timeout the result provided will be
+     *                   result::timeout.
+     *
+     * \return Value indicating the success of this function.
+     */
     result remove(size_t value, timeout in_timeout = timeout::infinite);
 
-    /** @todo */
+    /**
+     * \brief Gets the current value of this counter.
+     *
+     * \param output Reference to location to store value in.
+     *
+     * \return Value indicating the success of this function.
+     */
     result get(size_t& output);
 
-    /** @todo */
+    /**
+     * \brief Sets the current value of this counter.
+     *
+     * Causes any waiting jobs to be readied if the resulting value is equal to
+     * the value they are waiting for.
+     *
+     * \param value Value to set counter to.
+     *
+     * \return Value indicating the success of this function.
+     */
     result set(size_t value);
 
-    /** @todo */
+    /**
+     * \brief Assignment operator
+     *
+     * \param other Object to assign.
+     *
+     * \return Reference to this object.
+     */
+    counter_handle& operator=(const counter_handle& other);
+
+    /**
+     * \brief Equality operator
+     *
+     * \param rhs Object to compare against.
+     *
+     * \return True if objects are equal.
+     */
     bool operator==(const counter_handle& rhs) const;
 
-    /** @todo */
+    /**
+     * \brief Inequality operator
+     *
+     * \param rhs Object to compare against.
+     *
+     * \return True if objects are inequal.
+     */
     bool operator!=(const counter_handle& rhs) const;
 
-    /** @todo */
+    /**
+     * \brief Returns true if this handle points to a valid counter instance.
+     *
+     * \return True if handle is valid.
+     */
     bool is_valid() const;
 
 private:
 
-    /** @todo */
+    /**
+     * \brief Attempts to modify the value held by the counter.
+     *
+     * \param new_value Value that counter should be modified to.
+     * \param absolute If true the value should be modified absolutely, otherwise its relative to its current value.
+     * \param subtract If true the value should be subtracted not added. 
+     * \param lock_required If true a mutex lock needs to be acquired for our wait list. If 
+     *                      false its assumed that the lock is held further up the callstack.
+     *
+     * \return True if value was modified, false if unable to because it would result in a negative number.
+     */
     bool modify_value(size_t new_value, bool absolute, bool subtract = false, bool lock_required = true);
 
-    /** @todo */
+    /**
+     * \brief Wakes up any jobs that are waiting for the given value.
+     *
+     * \param new_value Value that jobs should be waiting for to be woken up.
+     * \param lock_required If true a mutex lock needs to be acquired for our wait list. If 
+     *                      false its assumed that the lock is held further up the callstack.
+     *
+     * \return True if added to wait list, false if wait criteria was met while
+     *         attempting operation and did not need to be added to list.
+     */
     void notify_value_changed(size_t new_value, bool lock_required = true);
 
-    /** @todo */
+    /**
+     * \brief Adds the given job to our wait list.
+     *
+     * \param job_def Definition of job to add to our wait list.
+     *
+     * \return True if added to wait list, false if wait criteria was met while 
+     *         attempting operation and did not need to be added to list.
+     */
     bool add_to_wait_list(internal::job_definition* job_def);
 
-    /** @todo */
+    /**
+     * \brief Removes the given job from our wait list.
+     *
+     * \param job_def Definition of job to remove from our wait list.
+     */
     void remove_from_wait_list(internal::job_definition* job_def);
-
-    /** @todo */
-    bool try_remove_value(size_t value);
 
     /** Pointer to the owning scheduler of this handle. */
     scheduler* m_scheduler = nullptr;
 
-    /** @todo */
+    /** Index into the scheduler's counter pool where this counters data is held. */
     size_t m_index = 0;
 
 };

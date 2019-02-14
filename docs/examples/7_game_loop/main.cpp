@@ -214,12 +214,6 @@ public:
 protected:
     virtual void tick()
     {
-        // Some dummy work.
-        //volatile double sum = 0;
-        //for (int i = 0; i < 1000; i++) sum += atan2(i, i / 2);
-
-        //JOBS_PRINTF("Ticked Physics!");
-
         // Here you would do some collision checking between entities.
     }
 
@@ -243,7 +237,7 @@ protected:
         // Demonstrates get a synchronized physics system which has finished its tick. This ensures
         // that the entity would be able to access a stable physics information this frame without
         // ordering issues.
-        //physics_system* physics = m_physics->sync();
+        physics_system* physics = m_physics->sync();
 
         // Sync to our dependent entities if we have any
         {
@@ -252,15 +246,9 @@ protected:
             for (auto& entity : m_dependencies)
             {
                 jobs_profile_scope(jobs::profile_scope_type::user_defined, "sync");
-                //entity->sync();
+                entity->sync();
             }
         }
-
-        //JOBS_PRINTF("Ticked!\n");
-
-        // Some dummy work.
-        //volatile double sum = 0;
-        //for (int i = 0; i < 1000; i++) sum += atan2(i, i / 2);
     }
 
 private:
@@ -325,16 +313,10 @@ void jobsMain()
     // Create a handful of dummy entities.
     entity entities[entity_count];
     std::vector<const entity*> dependencies;
-    for (int i = 0; i < entity_count/2; i++)
+    for (int i = 0; i < entity_count; i++)
     {
         entities[i].init(&info, &physics, { });
         dependencies.push_back(&entities[i]);
-    }
-
-    // Create a handful of entities which will sync to the first lot.
-    for (int i = entity_count/2; i < entity_count; i++)
-    {
-        entities[i].init(&info, &physics, { }); //&entities[i - (entity_count/2)] });
     }
 
     // General job handle list for dispatching as a batch.
@@ -388,9 +370,6 @@ void jobsMain()
             dispatch_duration_sum = 0.0f;
             frame_count = 0;
         }
-
-        // Pause between frames so we can actually read the output :).
-        //jobs::scheduler::sleep(10);
     }
 
     // Expected execution:

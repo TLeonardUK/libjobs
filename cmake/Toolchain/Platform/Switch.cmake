@@ -17,9 +17,6 @@
 #     misrepresented as being the original software.
 #  3. This notice may not be removed or altered from any source distribution.
 
-# Based vaguely off
-# https://github.com/AutodeskGames/stingray-plugin/blob/master/cmake/Toolchain-XBoxOne.cmake
-
 # This module is shared; use include blocker.
 if( _SWITCH_PLATFORM_ )
 	return()

@@ -28,7 +28,7 @@
 #ifndef __JOBS_DEFINES_H__
 #define __JOBS_DEFINES_H__
 
- /** @todo */
+/** Defines the platform we are compiling for. */
 #if defined(__ORBIS__)
 #   define JOBS_PLATFORM_PS4
 #elif defined(_DURANGO)
@@ -57,14 +57,14 @@
 #   include <nn/nn_Log.h>
 #endif
 
- /** @todo */
+/** Defines the build flavour we are compiling for. */
 #if defined(NDEBUG)
 #   define JOBS_RELEASE_BUILD 
 #else
 #   define JOBS_DEBUG_BUILD 
 #endif
 
- /** @todo */
+/** Various compiler specific flags macro's. */
 #if defined(JOBS_PLATFORM_WINDOWS) ||  defined(JOBS_PLATFORM_XBOX_ONE)
 #   define JOBS_FORCE_INLINE __forceinline 
 #   define JOBS_FORCE_NO_INLINE __declspec(noinline)
@@ -77,30 +77,31 @@
 #   define JOBS_FORCE_NO_INLINE 
 #endif
 
- /** @todo */
-#if 1// defined(JOBS_PLATFORM_WINDOWS)
-#   if defined(JOBS_PLATFORM_SWITCH)
-//#       define JOBS_YIELD() __asm__ __volatile__ ("yield")
-#       define JOBS_YIELD() nn::os::YieldThread()
-#   else
-#       define JOBS_YIELD() _mm_pause()
-#   endif
+/** Yields the thread, primarily used inside busy-waits. */
+#if defined(JOBS_PLATFORM_SWITCH)
+#   define JOBS_YIELD() nn::os::YieldThread()
 #else
-    // This provides no benefit on consoles where we have hard affinity.
-#   define JOBS_YIELD()
+#   define JOBS_YIELD() _mm_pause()
 #endif
 
- /** @todo */
+/** If true the jobs library will emit profile markers for various internal operations. */
 #if defined(JOBS_DEBUG_BUILD)
 #   define JOBS_USE_PROFILE_MARKERS 
 #endif
 
-/** @todo */
-#if 1//defined(JOBS_DEBUG_BUILD)
+/** If true the jobs library will emit verbose logging messages. */
+#if defined(JOBS_DEBUG_BUILD)
 #   define JOBS_USE_VERBOSE_LOGGING
 #endif
 
- /** @todo */
+/** Utility function to perform debug-output across all platforms. */
 #define JOBS_PRINTF(...) jobs::internal::debug_print(__VA_ARGS__)
+
+/** Macro used to initialize an anonymous RAII profile marker. */
+#if defined(JOBS_USE_PROFILE_MARKERS)
+#define jobs_profile_scope(...) ::jobs::internal::profile_scope_internal _profile_scope__##__LINE__(__VA_ARGS__);
+#else
+#define jobs_profile_scope(...)
+#endif
 
 #endif // __JOBS_DEFINES_H__

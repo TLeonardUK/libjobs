@@ -43,8 +43,8 @@ namespace jobs {
 class scheduler;
 
 /**
-    *  \brief Entry point for a jobs workload.
-    */
+ *  \brief Entry point for a jobs workload.
+ */
 typedef std::function<void()> job_entry_point;
 
 namespace internal {
@@ -66,57 +66,63 @@ protected:
     friend class jobs::event_handle;
     friend class jobs::counter_handle;
 
-    /** @todo */
+    /** True if this job context has been assigned a fiber. */
     bool has_fiber = false;
 
-    /** @todo */
-    size_t fiber_index;
-
-    /** @todo */
-    size_t fiber_pool_index;
-
-    /** @todo */
-    size_t queues_contained_in;
-
-    /** @todo */
+    /** If the fiber assigned to this context is held in @raw_fiber or indirectly through @fiber_index / @fiber_pool_index. */
     bool is_fiber_raw;
 
-    /** @todo */
+    /** Index of the fiber (inside its pool) assigned to this context. */
+    size_t fiber_index;
+
+    /** Index of the fiber pool the fiber assigned to this context is contained in. */
+    size_t fiber_pool_index;
+
+    /** Raw fiber assigned to this context, rather than a pooled fiber. */
     fiber raw_fiber;
 
-    /** @todo */
+    /** Bitmask of all queues the job being run is contained in. */
+    size_t queues_contained_in;
+
+    /** Depth of profile marker stack. */
     size_t profile_scope_depth;
 
-    /** @todo */
+    /** Head of profile marker stack linked list. */
     profile_scope_definition* profile_stack_head = nullptr;
 
-    /** @todo */
+    /** Tail of profile marker stack linked list. */
     profile_scope_definition* profile_stack_tail = nullptr;
 
-    /** @todo */
+    /** Scheduler that owns this context. */
     jobs::scheduler* scheduler = nullptr;
 
-    /** @todo */
+    /** Definition of job being run by this context. */
     job_definition* job_def = nullptr;
     
 public:
 
-    /** @todo */
+    /** Constructor. */
     job_context();
 
-    /** @todo */
+    /** Resets all data in this context ready for it to be recycled. */
     void reset();
 
-    /** @todo */
-    //result sleep(size_t milliseconds);
-
-    /** @todo */
-    //result wait_for(job_event evt);
-
-    /** @todo */
+    /**
+     * \brief Pushes another profile marker onto the stack.
+     *
+     * \param type Semantic type of code area this profile marker is marking.
+     * \param unformatted If true, printf style formatting on arguments will be skipped.
+     * \param tag Descriptive tag of maker. If unformatted is false this is used as a printf format form the varidic arguments.
+     *
+     * \return Value indicating the success of this function.
+     */
     result enter_scope(profile_scope_type type, bool unformatted, const char* tag, ...);
 
-    /** @todo */
+    /**
+     * \brief Pops the top profile marker off the stack.
+     *
+     * \return Value indicating the success of this function.
+     */
     result leave_scope();
 
 };
@@ -126,13 +132,13 @@ public:
  */
 enum class job_status
 {
-    initialized,                        /**< Job is initialized and ready for dispatch */
-    pending,                            /**< Job is pending execution */
-    running,                            /**< Job is running on a worker */
-    sleeping,                           /**< Job is sleeping. */
-    waiting_on_counter,                 /**< Job is waiting for a counter. */
-    waiting_on_job,                     /**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
-    completed,                          /**< Job has completed running */
+    initialized,        /**< Job is initialized and ready for dispatch */
+    pending,            /**< Job is pending execution */
+    running,            /**< Job is running on a worker */
+    sleeping,           /**< Job is sleeping. */
+    waiting_on_counter, /**< Job is waiting for a counter. */
+    waiting_on_job,     /**< Job is waiting explicitly (eg. job.wait rather than a dependency) for a job to complete. */
+    completed,          /**< Job has completed running */
 };
 
 }; /* nemspace internal */
@@ -149,84 +155,218 @@ protected:
 
     friend class scheduler;
 
-    /** @todo */
+    /**
+     * \brief Constructor
+     *
+     * \param scheduler Scheduler that owns this job.
+     * \param index Index into the scheduler's job pool where this jobs data is held.
+     */
     job_handle(scheduler* scheduler, size_t index);
 
-    /** @todo */
+    /** Increases the reference count of this job. */
     void increase_ref();
 
-    /** @todo */
+    /** Decreases the reference count of this job. When it reaches zero, it will be disposed of and recycled. */
     void decrease_ref();
 
 public:
 
-    /** @todo */
+    /** Constructor */
     job_handle();
 
-    /** @todo */
+    /**
+     * \brief Copy constructor
+     *
+     * \param other Object to copy.
+     */
     job_handle(const job_handle& other);
 
-    /** @todo */
+    /** Destructor */
     ~job_handle();
 
-    /** @todo */
-    job_handle& operator=(const job_handle& other);
-
-    /** @todo */
+    /**
+     * \brief Sets the function to call when this job is executed.
+     *
+     * \param job_work Function to call on execution.
+     *
+     * \return Value indicating the success of this function.
+     */
     result set_work(const job_entry_point& job_work);
 
-    /** @todo */
+    /**
+     * \brief Sets the descriptive name of this job.
+     *
+     * \param tag Name of this job.
+     *
+     * \return Value indicating the success of this function.
+     */
     result set_tag(const char* tag);
 
-    /** @todo */
+    /**
+     * \brief Sets the minimum stack size required for this job to run.
+     *
+     * The scheduler will always attempt to allocate fibers to jobs, from a 
+     * fiber pool with a smaller stack-size first. If all pools are empty
+     * or no pool exists that meets the minimum stack-size, the job will 
+     * never complete.
+     *
+     * \param stack_size Minimum stack size required for this job to run.
+     *
+     * \return Value indicating the success of this function.
+     */
     result set_stack_size(size_t stack_size);
 
-    /** @todo */
+    /**
+     * \brief Sets the priority of this job.
+     *
+     * Queues are created for each priority, if you want a job to exist in multiple
+     * queues then priorities can be combined together into a bitmask (the job will only be executed
+     * once though). Worker thread pools can also be assigned to only work on jobs with
+     * specific priorities. Combining both of these can give fine grain control over when and where
+     * individual jobs are executed.
+     *
+     * \param job_priority Priority to assiociated with this job.
+     *
+     * \return Value indicating the success of this function.
+     */
     result set_priority(priority job_priority);
 
-    /** @todo */
+    /**
+     * \brief Sets a counter that will be incremented when the job completes.
+     *
+     * \param counter Handle of counter to increment when complete.
+     *
+     * \return Value indicating the success of this function.
+     */
     result set_completion_counter(const counter_handle& counter);
 
-    /** @todo */
+    /**
+     * \brief Clears the internal dependency list for this job.
+     *
+     * \return Value indicating the success of this function.
+     */
     result clear_dependencies();
 
-    /** @todo */
+    /**
+     * \brief Adds a predecessor job that will always execute before this
+     *        job executes.
+     *        
+     * Care should be taken not to create circular dependencies which
+     * will cause jobs to never complete.
+     *
+     * \param other Handle of job to add as dependency.
+     *
+     * \return Value indicating the success of this function.
+     */
     result add_predecessor(job_handle other);
 
-    /** @todo */
-    //result add_predecessor(event* other);
-
-    /** @todo */
+    /**
+     * \brief Adds a successor job that will always execute after this
+     *        job executes.
+     *
+     * Care should be taken not to create circular dependencies which
+     * will cause jobs to never complete.
+     *
+     * \param other Handle of job to add as dependency.
+     *
+     * \return Value indicating the success of this function.
+     */
     result add_successor(job_handle other);
 
-    /** @todo */
-    //result add_successor(event* other);
-
-    /** @todo */
+    /**
+     * \brief Determines if this job is pending execution.
+     *
+     * Jobs pending execution are ones that have been queued, but not yet picked up by a worker thread.
+     * Jobs can also return to this state if they are requeued for any reason (such as no fibers being available).
+     *
+     * \return True if job is pending.
+     */
     bool is_pending();
 
-    /** @todo */
+    /**
+     * \brief Determines if this job is currently executing.
+     *
+     * A job is only in an executing state when it's fiber is running, waiting jobs are not
+     * considered to be running.
+     *
+     * \return True if job is running.
+     */
     bool is_running();
 
-    /** @todo */
+    /**
+     * \brief Determines if this job has completed.
+     *
+     * \return True if job is completed.
+     */
     bool is_complete();
 
-    /** @todo */
+    /**
+     * \brief Determines if this job can be modified.
+     *
+     * Jobs are only mutable before they have been dispatched, or after they have completed. At no other
+     * point should they be modified.
+     *
+     * \return True if job is mutable.
+     */
     bool is_mutable();
 
-    /** @todo */
+    /**
+     * \brief Determines if this handle points to a valid job.
+     *
+     * \return True if handle is valid.
+     */
     bool is_valid();
 
-    /** @todo */
-    result wait(timeout in_timeout = timeout::infinite);// , priority assist_on_tasks = priority::all_but_slow);
+    /**
+     * \brief Waits for this job to complete.
+     *
+     * If called from a job this is non-blocking, and will queue the job
+     * for execution after the given job completes. If called
+     * from any other place, it will block.
+     *
+     * \param in_timeout If provided, this function will wait a maximum of this time. If
+     *                   the function returns due to a timeout the result provided will be
+     *                   result::timeout.
+     *
+     * \return Value indicating the success of this function.
+     */
+    result wait(timeout in_timeout = timeout::infinite);
 
-    /** @todo */
+    /**
+     * \brief Dispatches this job, causing it to be queued for execution. 
+     *
+     * If dispatching a large number of jobs in one go, consider using the
+     * more performant @jobs::scheduler::dispatch_batch.
+     *
+     * \return Value indicating the success of this function.
+     */
     result dispatch();
 
-    /** @todo */
+    /**
+     * \brief Assignment operator
+     *
+     * \param other Object to assign.
+     *
+     * \return Reference to this object.
+     */
+    job_handle& operator=(const job_handle& other);
+
+    /**
+     * \brief Equality operator
+     *
+     * \param rhs Object to compare against.
+     *
+     * \return True if objects are equal.
+     */
     bool operator==(const job_handle& rhs) const;
 
-    /** @todo */
+    /**
+     * \brief Inequality operator
+     *
+     * \param rhs Object to compare against.
+     *
+     * \return True if objects are inequal.
+     */
     bool operator!=(const job_handle& rhs) const;
 
 private:
@@ -234,7 +374,7 @@ private:
     /** Pointer to the owning scheduler of this handle. */
     scheduler* m_scheduler = nullptr;
 
-    /** @todo */
+    /** Index into the scheduler's job definition pool where this jobs data is held. */
     size_t m_index = 0;
 
 };
@@ -248,84 +388,92 @@ namespace internal {
 class job_definition
 {
 public:
+    scheduler;
 
-    /** @todo */
+    /**
+     * \brief Constructor
+     *
+     * \param index Index into the scheduler's pool where this jobs data is held.
+     */
     job_definition(size_t index);
 
-    /** @todo */
+    /** Resets data so this definition can be recycled. */
     void reset();
 
 public:    
 
-    /** @todo */
+    /** Index into the scheduler's  pool where this jobs data is held. */
     size_t index;
 
-    /** @todo */
+    /** Number of handles that reference this job. Used to track and recycle jobs when no longer used. */
     std::atomic<size_t> ref_count;
 
-    /** @todo */
+    /** Function executed to perform jobs workload. */
     job_entry_point work;
 
-    /** @todo */
+    /** Minimum stack-size fiber must have to execute job. */
     size_t stack_size;
 
-    /** @todo */
+    /** Bitmask of all priorities assigned to job. This determines the work queues it gets placed in. */
     priority job_priority;
 
-    /** @todo */
+    /** Handle to counter which will be incremented on completino. */
     counter_handle completion_counter;
 
-    /** @todo */
+    /** Current execution status of the job. */
     std::atomic<job_status> status;
 
-    /** @todo */
+    /** Handle to event we are currently waiting for. */
     event_handle wait_event;
 
-    /** @todo */
+    /** Handle to counter we are currently waiting for. */
     counter_handle wait_counter;
 
-    /** @todo */
+    /** Value we are waiting for @wait_counter to reach to ready.  */
     size_t wait_counter_value;
 
-    /** @todo */
+    /** If true, the value we are waiting for, will be removed from the counter once its reached. */
     bool wait_counter_remove_value;
 
-    /** @todo */
+    /** 
+     * If true the job is not automatically requeued when the counter reaches the wanted value. This is used primarily
+     * for fake-jobs which are created purely to wait on, but don't actually need to execute any code. 
+     */
     bool wait_counter_do_not_requeue;
 
-    /** @todo */
+    /** Linked list link for this job within the wait-list in the counter we are waiting on. */
     multiple_writer_single_reader_list<internal::job_definition*>::link wait_counter_list_link;
 
-    /** @todo */
+    /** Handle of job we are current waiting for. */
     job_handle wait_job;
 
-    /** @todo */
+    /** Linked list link for this job within the wait-list in the job we are waiting on. */
     multiple_writer_single_reader_list<internal::job_definition*>::link wait_list_link;
 
-    /** @todo */
+    /** Linked list holding all jobs which are currently waiting for us to complete */
     multiple_writer_single_reader_list<internal::job_definition*> wait_list;
 
     // Note: dependencies are only safe to modify in two situations:
     //            - when job is not running and is mutable
     //            - when job is running and is being modified by the fiber executing it (when not queued).
 
-    /** @todo */
+    /** Head of single linked list holding all predecessor job dependencies. */
     job_dependency* first_predecessor = nullptr;
 
-    /** @todo */
+    /** Head of single linked list holding all successor job dependencies. */
     job_dependency* first_successor = nullptr;
 
-    /** @todo */
+    /** Atomic counter counting down how many pending predecessors need to finish executing before we can run. */
     std::atomic<size_t> pending_predecessors;
 
-    /** @todo */
+    /** Execution context for this job. */
     job_context context;
 
-    /** @todo */
+    /** Maximum size of a descriptive tag that can be assigned to a job. */
     static const size_t max_tag_length = 64;
 
-    /** @todo */
-    char tag[max_tag_length];
+    /** Descriptive tag that can be assigned to this job. */
+    char tag[max_tag_length] = 0;
 
 };
 
@@ -337,13 +485,17 @@ class job_dependency
 {
 public:
 
-    /** @todo */
+    /**
+     * \brief Constructor
+     *
+     * \param index Index into the scheduler's pool where this dependencies data is held.
+     */
     job_dependency(size_t in_pool_index)
         : pool_index(in_pool_index)
     {
     }
 
-    /** @todo */
+    /** Resets data so this can be recycled. */
     void reset()
     {
         // pool_index should not be reset, it should be persistent.
@@ -351,13 +503,13 @@ public:
         next = nullptr;
     }
 
-    /** @todo */
+    /** Index into the scheduler's pool where this dependencies data is held. */
     size_t pool_index;
 
-    /** @todo */
+    /** Handle of job this dependency is about. */
     job_handle job;
 
-    /** @todo */
+    /** Next dependency in a job's linked list. */
     job_dependency* next = nullptr;
 
 };
@@ -370,31 +522,22 @@ class profile_scope_definition
 {
 public:
 
-    /** @todo */
+    /** Semantic type of code this profile marker is enclosing. */
     profile_scope_type type;
 
-    /** @todo */
+    /** Maximum length of a descriptive tag that can be assigned to this marker. */
     static const size_t max_tag_length = 64;
 
-    /** @todo */
+    /** Descriptive tag */
     char tag[max_tag_length];
 
-    /** @todo */
+    /** Next scope in job's stack. */
     profile_scope_definition* next;
 
-    /** @todo */
+    /** Previous scope in job's stack. */
     profile_scope_definition* prev;
 
 };
-
-}; /* namespace internal */
-
-#if defined(JOBS_USE_PROFILE_MARKERS)
-/** @todo */
-#define jobs_profile_scope(...) ::jobs::profile_scope_internal _profile_scope__##__LINE__(__VA_ARGS__);
-#else
-#define jobs_profile_scope(...)
-#endif
 
 /**
  * Simple RAII type that enters a profile scope on construction and exits it
@@ -402,19 +545,31 @@ public:
  */
 class profile_scope_internal
 {
-private:
-    internal::job_context* m_context = nullptr;
-    jobs::scheduler* m_scheduler = nullptr;
-
 public:
 
-    /** @todo */
+    /**
+     * \brief Constructor
+     *
+     * \param type Semantic type of code this profile marker is enclosing.
+     * \param tag Descriptive tag.
+     * \param scheduler Scheduler that owns this profile scope. If nullptr, static value will be used.
+     */
     profile_scope_internal(jobs::profile_scope_type type, const char* tag, jobs::scheduler* scheduler = nullptr);
 
-    /** @todo */
+    /** Destructor */
     ~profile_scope_internal();
 
+private:
+
+    /** Job context this scope is inside of. */
+    jobs::internal::job_context* m_context = nullptr;
+
+    /** Scheduler that owns this profile scope. */
+    jobs::scheduler* m_scheduler = nullptr;
+
 };
+
+}; /* namespace internal */
 
 }; /* namespace jobs */
 

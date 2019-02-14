@@ -46,10 +46,12 @@
 
 namespace jobs {
 
+// Static constants
 thread_local scheduler* scheduler::m_worker_thread_scheduler{nullptr};
 thread_local scheduler::worker_thread_state* scheduler::m_worker_thread_state{nullptr};
 bool scheduler::m_profiling_active = false;
 
+/** @todo */
 class scheduler::worker_thread_state
 {
 public:
@@ -543,10 +545,6 @@ result scheduler::create_job(job_handle& instance)
 
     internal::job_definition& def = get_job_definition(index);
 
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-   // write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "job handle allocated, index=%zi ptr=0x%08x", index, &def);
-#endif
-
     instance = job_handle(this, index);
     return result::success;
 }
@@ -561,10 +559,6 @@ void scheduler::free_job(size_t index)
     }
     clear_job_dependencies(index);
     def.reset();
-
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-    write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "job handle freed, index=%zi ptr=0x%08x", index, &def);
-#endif
 
     m_job_pool.free(index);
 }
@@ -596,10 +590,6 @@ result scheduler::create_counter(counter_handle& instance)
 
     internal::counter_definition& def = get_counter_definition(index);
 
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-   // write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle allocated, index=%zi ptr=0x%08x", index, &def);
-#endif
-
     instance = counter_handle(this, index);
     return result::success;
 }
@@ -609,10 +599,6 @@ void scheduler::free_counter(size_t index)
     internal::counter_definition& def = get_counter_definition(index);
     def.reset();
 
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-    write_log(debug_log_verbosity::verbose, debug_log_group::scheduler, "counter handle freed, index=%zi ptr=0x%08x", index, &def);
-#endif
-
     m_counter_pool.free(index);
 }
 
@@ -620,14 +606,12 @@ void scheduler::increase_counter_ref_count(size_t index)
 {
     internal::counter_definition& def = get_counter_definition(index);
     size_t new_ref_count = ++def.ref_count;
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle ++, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
 }
 
 void scheduler::decrease_counter_ref_count(size_t index)
 {
     internal::counter_definition& def = get_counter_definition(index);
     size_t new_ref_count = --def.ref_count;
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "job handle --, count=%zi index=%zi ptr=0x%08x", new_ref_count, index, &def);
     if (new_ref_count == 0)
     {
         free_counter(index);
@@ -671,9 +655,7 @@ void scheduler::enter_context(internal::job_context& context)
 
     WorkerThreadState.active_job_context = &context;
 
-//	assert(context.job_def == nullptr || context.job_def->status == internal::job_status::running);
     job_fiber->switch_to();
-//	assert(context.job_def == nullptr || context.job_def->status == internal::job_status::running);
 }
 
 void scheduler::switch_context(internal::job_context& new_context)
@@ -930,10 +912,6 @@ result scheduler::dispatch_job(size_t index)
 result scheduler::dispatch_batch(job_handle* job_array, size_t count)
 {
     jobs_profile_scope(profile_scope_type::worker, "scheduler::dispatch_batch", this);
-
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "dispatching job, index=%zi", index);
-#endif
 
     size_t job_queues = 0;
 
@@ -1307,15 +1285,9 @@ bool scheduler::execute_next_job(priority job_priorities, bool can_block)
     return false;
 }
 
-std::atomic<size_t> fiber_count{ 0 };
-
 result scheduler::allocate_fiber(size_t required_stack_size, size_t& fiber_index, size_t& fiber_pool_index)
 {
     bool any_suitable_pools = false;
-
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "Allocating fiber %zi...", ++fiber_count);
-#endif
 
     for (size_t i = 0; i < m_fiber_pool_count; i++)
     {
@@ -1352,19 +1324,11 @@ result scheduler::free_fiber(size_t fiber_index, size_t fiber_pool_index)
 {
     fiber_pool& pool = *m_fiber_pools_sorted_by_stack[fiber_pool_index];
 
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "Freeing fiber %zi...", --fiber_count);
-#endif
-
-#if defined(JOBS_USE_VERBOSE_LOGGING)
-    //write_log(debug_log_verbosity::verbose, debug_log_group::job, "fiber freed, pool=%zi index=%zi", fiber_pool_index, fiber_index);
-#endif
-
     pool.pool.free(fiber_index);
     return result::success;
 }
 
-result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_tasks)
+result scheduler::wait_until_idle(timeout wait_timeout)
 {
     internal::stopwatch timer;
     timer.start();
@@ -1407,7 +1371,7 @@ result scheduler::wait_until_idle(timeout wait_timeout)// , priority assist_on_t
     return result::success;
 }
 
-result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)//, priority assist_on_tasks)
+result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)
 {
     jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job", this);
 
@@ -1687,8 +1651,6 @@ internal::job_definition* scheduler::get_active_job_definition()
 void scheduler::notify_job_available(size_t job_count)
 {
     jobs_profile_scope(profile_scope_type::worker, "scheduler::notify_job_available", this);
-
-    //std::unique_lock<std::mutex> lock(m_task_available_mutex);
 
     size_t result = (m_available_jobs += job_count);
     

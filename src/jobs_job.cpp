@@ -65,29 +65,8 @@ result job_context::enter_scope(profile_scope_type type, bool unformatted, const
 
     if (unformatted)
     {
-        for (size_t i = 0; ; i++)
-        {
-            char c = tag[i];
-            if (c == '\0' || i == profile_scope_definition::max_tag_length - 1)
-            {
-                scope->tag[i] = '\0';
-                break;
-            }
-            else
-            {
-                scope->tag[i] = c;
-            }
-        }
-
-/*        size_t len = strlen(tag);
-        if (len > profile_scope_definition::max_tag_length - 1)
-        {
-            len = profile_scope_definition::max_tag_length - 1;
-        }
-
-        memcpy(scope->tag, tag, len);
-        scope->tag[len] = '\0';
-*/
+        strncpy(scope->tag, tag, profile_scope_definition::max_tag_length - 1);
+        scope->tag[profile_scope_definition::max_tag_length - 1] = '\0';
     }
     else
     {
@@ -122,25 +101,6 @@ result job_context::enter_scope(profile_scope_type type, bool unformatted, const
 
     scheduler->m_profile_functions.enter_scope(scope->type, scope->tag);
 
-    // Debugging code.
-    /*assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
-    assert(profile_stack_head != nullptr || profile_scope_depth == 0);
-    
-    profile_scope_definition* check_scope_tail = profile_stack_tail;
-    profile_scope_definition* check_scope_head = profile_stack_head;
-    for (int i = 0; i < profile_scope_depth; i++)
-    {
-        assert(check_scope_tail != nullptr);
-        assert(check_scope_head != nullptr);
-        check_scope_tail = check_scope_tail->prev;
-        check_scope_head = check_scope_head->next;
-    }
-
-    if (has_fiber && is_fiber_raw)
-    {
-        printf("[enter_scope:%zi,%zi,%p] prev=%p %s\n", std::this_thread::get_id(), profile_scope_depth, scope, profile_stack_tail->prev, scope->tag);
-    }*/
-
     return result::success;
 }
 
@@ -150,18 +110,6 @@ result job_context::leave_scope()
     {
         return result::success;
     }
-
-    /*if (has_fiber && is_fiber_raw)
-    {
-        printf("[leave_scope:%zi,%zi,%p] prev=%p %s\n", std::this_thread::get_id(), profile_scope_depth - 1, profile_stack_tail, profile_stack_tail != nullptr ? profile_stack_tail->prev : 0, profile_stack_tail == nullptr ? "" : profile_stack_tail->tag);
-    }
-
-    std::string stag = profile_stack_tail->tag;
-    assert(stag.find("Worker") == std::string::npos);
-
-    assert(profile_scope_depth > 0);
-    assert(profile_stack_tail != nullptr);
-    */
 
     profile_scope_definition* original = profile_stack_tail;
 
@@ -176,9 +124,6 @@ result job_context::leave_scope()
 
     profile_stack_tail = profile_stack_tail->prev;
     profile_scope_depth--;
-
-    //assert(profile_stack_tail != nullptr || profile_scope_depth == 0);
-    //assert(profile_stack_head != nullptr || profile_scope_depth == 0);
 
     scheduler->m_profile_functions.leave_scope();
 
@@ -213,6 +158,50 @@ void job_definition::reset()
     // Should have been cleaned up by scheduler at this point ...
     assert(first_predecessor == nullptr);
     assert(first_successor == nullptr);
+}
+
+profile_scope_internal::profile_scope_internal(jobs::profile_scope_type type, const char* tag, jobs::scheduler* scheduler)
+{
+    if (!scheduler::is_profiling_active())
+    {
+        return;
+    }
+
+    internal::job_context* context = scheduler::get_active_job_context();
+    if (context != nullptr)
+    {
+        context->enter_scope(type, true, tag);
+    }
+    else if (scheduler != nullptr)
+    {
+        scheduler->m_profile_functions.enter_scope(type, tag);
+    }
+
+    m_scheduler = scheduler;
+    m_context = context;
+}
+
+profile_scope_internal::~profile_scope_internal()
+{
+    if (!scheduler::is_profiling_active())
+    {
+        return;
+    }
+
+    internal::job_context* context = scheduler::get_active_job_context();
+
+    // Not sure if this situation is even possible, but make sure we always
+    // leave on the same context we enter on.
+    assert(context == m_context);
+
+    if (context != nullptr)
+    {
+        context->leave_scope();
+    }
+    else if (m_scheduler != nullptr)
+    {
+        m_scheduler->m_profile_functions.leave_scope();
+    }
 }
 
 }; // namespace internal
@@ -472,14 +461,14 @@ bool job_handle::is_valid()
     return (m_scheduler != nullptr);
 }
 
-result job_handle::wait(timeout in_timeout)// , priority assist_on_tasks)
+result job_handle::wait(timeout in_timeout)
 {
     if (!is_valid())
     {
         return result::invalid_handle;
     }
 
-    return m_scheduler->wait_for_job(*this, in_timeout);// , assist_on_tasks);
+    return m_scheduler->wait_for_job(*this, in_timeout);
 }
 
 result job_handle::dispatch()
@@ -504,51 +493,6 @@ bool job_handle::operator==(const job_handle& rhs) const
 bool job_handle::operator!=(const job_handle& rhs) const
 {
     return !(*this == rhs);
-}
-
-profile_scope_internal::profile_scope_internal(jobs::profile_scope_type type, const char* tag, jobs::scheduler* scheduler)
-{
-    if (!scheduler::is_profiling_active())
-    {
-        return;
-    }
-
-    internal::job_context* context = scheduler::get_active_job_context();
-    if (context != nullptr)
-    {
-        context->enter_scope(type, true, tag);
-    }
-    else if (scheduler != nullptr)
-    {
-        scheduler->m_profile_functions.enter_scope(type, tag);
-    }
-
-    m_scheduler = scheduler;
-    m_context = context;
-}
-
-profile_scope_internal::~profile_scope_internal()
-{
-    if (!scheduler::is_profiling_active())
-    {
-        return;
-    }
-
-    internal::job_context* context = scheduler::get_active_job_context();
-   // assert(context != nullptr);
-
-    // Not sure if this situation is even possible, but make sure we always
-    // leave on the same context we enter on.
-    assert(context == m_context);
-
-    if (context != nullptr)
-    {
-        context->leave_scope();
-    }
-    else if (m_scheduler != nullptr)
-    {
-        m_scheduler->m_profile_functions.leave_scope();
-    }
 }
 
 }; /* namespace jobs */

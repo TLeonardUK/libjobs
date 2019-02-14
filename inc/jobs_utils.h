@@ -37,6 +37,7 @@
 #include <shared_mutex>
 #include <cassert>
 #include <cmath>
+
 #if defined(JOBS_PLATFORM_PS4)
 // For _mm_pause intrinsic
 #include <x86intrin.h>
@@ -66,6 +67,8 @@ template <typename mutex_type>
 struct optional_lock
 {
 public:
+
+    /** @todo */
     optional_lock(mutex_type& mutex, bool should_lock)
         : m_mutex(mutex)
         , m_locked(should_lock)
@@ -76,6 +79,7 @@ public:
         }
     }
 
+    /** @todo */
     ~optional_lock()
     {
         if (m_locked)
@@ -85,7 +89,11 @@ public:
     }
 
 private:
+
+    /** @todo */
     mutex_type& m_mutex;
+
+    /** @todo */
     bool m_locked;
 
 };
@@ -95,6 +103,8 @@ template <typename mutex_type>
 struct optional_shared_lock
 {
 public:
+
+    /** @todo */
     optional_shared_lock(mutex_type& mutex, bool should_lock)
         : m_mutex(mutex)
         , m_locked(should_lock)
@@ -105,6 +115,7 @@ public:
         }
     }
 
+    /** @todo */
     ~optional_shared_lock()
     {
         if (m_locked)
@@ -114,7 +125,11 @@ public:
     }
 
 private:
+
+    /** @todo */
     mutex_type& m_mutex;
+
+    /** @todo */
     bool m_locked;
 
 };
@@ -202,6 +217,8 @@ private:
 struct spinwait_lock
 {
 public:
+
+    /** @todo */
     spinwait_lock(spinwait_mutex& mutex, bool do_lock = true)
         : m_mutex(mutex)
         , m_do_lock(do_lock)
@@ -212,6 +229,7 @@ public:
         }
     }
 
+    /** @todo */
     ~spinwait_lock()
     {
         if (m_do_lock)
@@ -234,6 +252,8 @@ private:
 struct spinwait_shared_lock
 {
 public:
+
+    /** @todo */
     spinwait_shared_lock(spinwait_mutex& mutex, bool do_lock = true)
         : m_mutex(mutex)
         , m_do_lock(do_lock)
@@ -244,6 +264,7 @@ public:
         }
     }
 
+    /** @todo */
     ~spinwait_shared_lock()
     {
         if (m_do_lock)
@@ -296,7 +317,6 @@ public:
         {
             if (m_locked)
             {
-                //printf("Unlocked\n");
                 m_owner->m_lock.unlock();
                 m_locked = false;
             }
@@ -771,8 +791,6 @@ public:
 
     /**
      * Constructor.
-     *
-     * \param memory_function User defined memory allocation overrides.
      */
     fixed_pool()
     {

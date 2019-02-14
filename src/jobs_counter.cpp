@@ -331,8 +331,6 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                 return result::success;
             }
 
-            //printf("Queued fake job, waiting...\n");
-
             // Keep looping until we manage to decrease the value.
             while (fake_job.status == internal::job_status::waiting_on_counter)
             {
@@ -352,11 +350,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
                         return result::timeout;
                     }
                 }
-
-                //printf("woke up!\n");
             }
-
-            //printf("Completed wait\n");
         }
     }
 
@@ -486,8 +480,6 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
     size_t signalled_job_count = 0;
     size_t signalled_no_requeue_job_count = 0;
 
-    //printf("notify_value_changed=%zi\n", new_value);
-
     {
         jobs_profile_scope(profile_scope_type::fiber, "wake up waiting", m_scheduler);
 
@@ -501,10 +493,6 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
             if (job_def->wait_counter_remove_value)
             {
                 signal = modify_value(job_def->wait_counter_value, false, true, false);
-                /*if (signal)
-                {
-                    printf("removed=%zi\n", new_value);
-                }*/
             }
             else
             {
@@ -523,7 +511,6 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
                     }
                     else
                     {
-                        //printf("Fake job wait completed: %zi\n", job_def->wait_counter_value);
                         signalled_no_requeue_job_count++;
                     }
 
@@ -546,7 +533,6 @@ void counter_handle::notify_value_changed(size_t new_value, bool lock_required)
     {
         jobs_profile_scope(profile_scope_type::fiber, "signal waiting threads", m_scheduler);
 
-        //printf("Waking up waiting...\n");
         std::unique_lock<std::mutex> lock(def.value_cvar_mutex);
         def.value_cvar.notify_all();
     }
