@@ -26,6 +26,8 @@ Building is identical to most cmake projects, check a cmake tutorial if you are 
 ## API Reference
 The library uses doxygen for its api reference. Once the project is build the output will be stored on docs/html.
 
+[You can view the current reference here.](http://htmlpreview.github.io/?https://github.com/TLeonardUK/libjobs/blob/master/docs/html/index.html)
+
 ## Basic Usage
 Examples of how to use the library are provided in docs/examples. Below is a brief explanation of the minimal steps required to run a job.
 
