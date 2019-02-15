@@ -286,30 +286,30 @@ struct multiple_writer_single_reader_list
 {
 public:
 
-    /** @todo */
+    /** Individual link within the list. */
     struct link
     {
-        /** @todo */
+        /** Value held by this link */
         data_type value = nullptr;
 
-        /** @todo */
+        /** Next link in list */
         link* next = nullptr;
 
-        /** @todo */
+        /** Previous link in list */
         link* prev = nullptr;
     };
 
-    /** @todo */
+    /** Provides functionality to iterate over list in a thread-safe manner. */
     struct iterator
     {
     public:
 
-        /** @todo */
+        /** Constructor */
         iterator()
         {
         }
 
-        /** @todo */
+        /** Destructor */
         ~iterator()
         {
             if (m_locked)
@@ -319,26 +319,44 @@ public:
             }
         }
 
-        /** @todo */
+        /**
+        * \brief Gets the value held by the current link iterator is at.
+        *
+        * \return Value of current link.
+        */
         JOBS_FORCE_INLINE data_type value()
         {
             return m_link->value;
         }
 
-        /** @todo */
+        /**
+        * \brief Conversion to bool operator.
+        *
+        * \return True if there are more values to iterate over.
+        */
         JOBS_FORCE_INLINE operator bool() const
         {
             return m_link != nullptr;
         }
 
-        /** @todo */
+        /**
+        * \brief Post increment operator. 
+        *
+        * Causes the iterator to move onto the next value in the list.
+        *
+        * \return Reference to this iterator.
+        */
         JOBS_FORCE_INLINE iterator& operator++(int)
         { 
             next();
             return *this;
         }
 
-        /** @todo */
+        /**
+        * \brief Removes the current link.
+        *
+        * \return True if there are more values to iterate over.
+        */
         JOBS_FORCE_INLINE bool remove()
         {
             // Remove first.
@@ -365,7 +383,15 @@ public:
 
     private:
 
-        /** @todo */
+        /**
+        * \brief Starts itererating from the beginning of the given list.
+        *
+        * \param owner List to iterate over.
+        * \param lock_required If a read lock needs to be acquired on the list. If not its assumed
+        *                      the lock has been acquired further up the callstack.
+        *
+        * \return True if there are more values to iterate over.
+        */
         JOBS_FORCE_INLINE bool start(multiple_writer_single_reader_list* owner, bool lock_required)
         {
             assert(m_locked == false);
@@ -382,7 +408,11 @@ public:
             return (m_link != nullptr);
         }
 
-        /** @todo */
+        /**
+        * \brief Moves to the next value in the list.
+        *
+        * \return True if there are more values to iterate over.
+        */
         JOBS_FORCE_INLINE bool next()
         {
             m_link = m_link->next;
@@ -393,28 +423,34 @@ public:
 
         friend struct multiple_writer_single_reader_list<data_type>;
 
-        /** @todo */
+        /** List being iterated over. */
         multiple_writer_single_reader_list* m_owner = nullptr;
 
-        /** @todo */
+        /** Current link in the list. */
         link* m_link = nullptr;
 
-        /** @todo */
+        /** If we have acquired a read lock for the list. */
         bool m_locked = false;
 
     };
 
 public:
 
-    /** @todo */
+    /** Constructor. */
     multiple_writer_single_reader_list()
     {
     }
 
-    /** @todo */
+    /**
+    * \brief Adds the given link to the list.
+    *
+    * \param value Link to add to the list.
+    * \param lock_required If a write lock needs to be acquired on the list. If not its assumed
+    *                      the lock has been acquired further up the callstack.
+    */
     JOBS_FORCE_INLINE void add(link* value, bool lock_required = true)
     {
-        spinwait_shared_lock lock(m_lock, lock_required);
+        optional_shared_lock<spinwait_mutex> lock(m_lock, lock_required);
 
         while (true)
         {
@@ -442,10 +478,16 @@ public:
         }
     }
 
-    /** @todo */
+    /**
+    * \brief Removes the given link from the list.
+    *
+    * \param value Link to remove from the list.
+    * \param lock_required If a write lock needs to be acquired on the list. If not its assumed
+    *                      the lock has been acquired further up the callstack.
+    */
     JOBS_FORCE_INLINE void remove(link* value, bool lock_required = true)
     {
-        spinwait_shared_lock lock(m_lock, lock_required);
+        optional_shared_lock<spinwait_mutex> lock(m_lock, lock_required);
 
         while (true)
         {
@@ -477,13 +519,23 @@ public:
         }
     }
 
-    /** @todo */
+    /**
+    * \brief Creates an iterator for use on this list.
+    *
+    * \param iter Reference to storage that will hold the created iterator.
+    * \param lock_required If a read lock needs to be acquired on the list. If not its assumed
+    *                      the lock has been acquired further up the callstack.
+    */
     JOBS_FORCE_INLINE bool iterate(iterator& iter, bool lock_required = true)
     {        
         return iter.start(this, lock_required);
     }
 
-    /** @todo */
+    /**
+    * \brief Gets the shared mutex used for read/write exclusion.
+    *
+    * \return Mutex used by list.
+    */
     JOBS_FORCE_INLINE spinwait_mutex& get_mutex()
     {
         return m_lock;
@@ -491,27 +543,31 @@ public:
 
 private:
 
-    /** @todo */
+    /** Mutex used for read/write control. */
     spinwait_mutex m_lock;
 
-    /** @todo */
+    /** First link in the list. */
     std::atomic<link*> m_head = nullptr;
 
-    /** @todo */
+    /** Holds a value equal to the next m_change_index that is going to be committed. Prevents multiple writers changing the list at the same time. */
     std::atomic<size_t> m_uncommitted_change_index{ 0 };
 
-    /** @todo */
+    /** Incrementing variable representing the number of times the list has changed, used in tandem with \ref m_uncommitted_change_index to prevent concurrent writes. */
     size_t m_change_index = 0;
     
 };
 
-/** @todo */
+/**
+ * \brief Thread-safe lock-less queue. 
+ *
+ * This is implemented internally as a ring buffer.
+ */
 template <typename data_type>
 struct atomic_queue
 {
 public:
 
-    /** @todo */
+    /** Destructor. */
     ~atomic_queue()
     {
         if (m_buffer != nullptr)
@@ -521,7 +577,16 @@ public:
         }
     }
 
-    /** @todo */
+    /**
+     * \brief Initializes this queue to the given capacity.
+     *
+     * The only memory allocated by this queue is during this function.
+     *
+     * \param memory_functions Functions to use for allocating and deallocating queue buffers.
+     * \param capacity Maximum capacity of queue.
+     *
+     * \return Value indicating the success of this function.
+     */
     result init(const memory_functions& memory_functions, int64_t capacity)
     {
         // implemented as an atomic circular buffer.
@@ -538,7 +603,15 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+     * \brief Pops off the first value in the queue.
+     *
+     * \param result Reference to store poped value.
+     * \param can_block If true and the queue is empty, this function will block until a value is 
+     *                  available, otherwise \ref result::empty will be returned.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result pop(data_type& result, bool can_block = false)
     {
         while (true)
@@ -574,7 +647,15 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+     * \brief Pushes a new value into the queue.
+     *
+     * \param value New value to push into the queue.
+     * \param can_block If true and the queue is full, this function will block until space is
+     *                  available, otherwise \ref result::maximum_exceeded will be returned.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result push(data_type value, bool can_block = true)
     {
         while (true)
@@ -610,7 +691,17 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+     * \brief Pushes a number of items into the queue in a single operation.
+     *
+     * \param buffer Pointer to the first value to push into the queue.
+     * \param stride Byte offset to add to buffer to get subsequent value.
+     * \param count Number of values that need to be pushed into queue.
+     * \param can_block If true and the queue is full, this function will block until space is
+     *                  available, otherwise \ref result::maximum_exceeded will be returned.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result push_batch(data_type* buffer, size_t stride, size_t count, bool can_block = true)
     {
         while (true)
@@ -651,13 +742,21 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+    * \brief Gets the number of items in the queue.
+    *
+    * \return Number of items in the queue.
+    */ 
     JOBS_FORCE_INLINE size_t count()
     {
         return (size_t)(m_head - m_tail);
     }
 
-    /** @todo */
+    /**
+    * \brief Gets if this queue is empty.
+    *
+    * \return True if queue is empty.
+    */
     JOBS_FORCE_INLINE bool is_empty()
     {
         return (m_head == m_tail);
@@ -665,43 +764,58 @@ public:
 
 private:
 
-    /** @todo */
+    /** Linear data buffer storing all values in queue. */
     data_type* m_buffer = nullptr;
 
-    /** @todo */
+    /** Memory functions used for memory allocation. */
     memory_functions m_memory_functions;
 
-    /** @todo */
+    /** Current write position in ring buffer. (Need to modulus to get buffer index). */
     int64_t m_head;
 
-    /** @todo */
+    /** Current read position in ring buffer. (Need to modulus to get buffer index). */
     int64_t m_tail;
 
-    /** @todo */
+    /** Current position that a write is being permitted in-progress on. */
     std::atomic<int64_t> m_uncomitted_head;
 
-    /** @todo */
+    /** Current position that a read is being permitted in-progress on. */
     std::atomic<int64_t> m_uncomitted_tail;
 
-    /** @todo */
+    /** Maximum number of items in queue. */
     int64_t m_capacity;
 
 };
 
-/** @todo */
+/**
+ * \brief Fixed size, statically-allocated, thread-unsafe queue.
+ *
+ * This is implemented internally as a ring buffer.
+ *
+ * \tparam data_type Type of value held in queue.
+ * \tparam capacity Maximum number of values queue can hold.
+ */
 template <typename data_type, int capacity>
 struct fixed_queue
 {
 public:
 
-    /** @todo */
+    /** Constructor. */
     fixed_queue()
     {
         m_head = 0;
         m_tail = 0;
     }
 
-    /** @todo */
+    /**
+     * \brief Pops off the first value in the queue.
+     *
+     * Returns \ref result::empty if no value is available.
+     *
+     * \param result Reference to store poped value.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result pop(data_type& result) volatile
     {
         int64_t old_tail = m_tail;
@@ -719,7 +833,15 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+     * \brief Pushes a new value into the queue.
+     *
+     * Returns \ref result::maximum_exceeded if no space is available.
+     *
+     * \param value New value to push into the queue.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result push(data_type value) volatile
     {
         int64_t old_head = m_head;
@@ -737,13 +859,21 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+    * \brief Gets the number of items in the queue.
+    *
+    * \return Number of items in the queue.
+    */
     JOBS_FORCE_INLINE size_t count()
     {
         return (size_t)(m_head - m_tail);
     }
 
-    /** @todo */
+    /**
+    * \brief Gets if this queue is empty.
+    *
+    * \return True if queue is empty.
+    */
     JOBS_FORCE_INLINE  bool is_empty()
     {
         return (m_head == m_tail);
@@ -751,13 +881,13 @@ public:
 
 private:
 
-    /** @todo */
+    /** Linear data buffer to store values. */
     data_type m_buffer[capacity];
 
-    /** @todo */
+    /** Current write position in ring buffer. (Need to modulus to get buffer index). */
     int64_t m_head;
 
-    /** @todo */
+    /** Current read position in ring buffer. (Need to modulus to get buffer index). */
     int64_t m_tail;
 
 };
@@ -807,7 +937,17 @@ public:
         }
     }
 
-    /** @todo */
+    /**
+     * \brief Initializes this pool to the given capacity.
+     *
+     * The only memory allocated by this queue is during this function.
+     *
+     * \param memory_functions Functions to use for allocating and deallocating pool buffers.
+     * \param capacity Maximum capacity of pool.
+     * \param init_function Function to call on each element in pool to initialize it.
+     *
+     * \return Value indicating the success of this function.
+     */
     result init(const memory_functions& memory_functions, size_t capacity, const init_function& init_function)
     {
         m_memory_functions = memory_functions;
@@ -845,13 +985,25 @@ public:
         return result::success;
     }
 
-    /** @todo */
+    /**
+     * \brief Allocates a new object from the pool.
+     *
+     * \param output Reference to store index of allocated object.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result alloc(size_t& output)
     {
         return m_free_queue.pop(output, true);
     }
 
-    /** @todo */
+    /**
+     * \brief Frees an object previously allocated with \ref alloc.
+     *
+     * \param object Object to be freed.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result free(data_type* object)
     {
         size_t index = (reinterpret_cast<char*>(object) - reinterpret_cast<char*>(m_objects)) / sizeof(data_type);
@@ -863,25 +1015,45 @@ public:
         return m_free_queue.push(index);
     }
 
-    /** @todo */
+    /**
+     * \brief Frees an object previously allocated with \ref alloc.
+     *
+     * \param index Index of object within pool.
+     *
+     * \return Value indicating the success of this function.
+     */
     JOBS_FORCE_INLINE result free(size_t index)
     {
         return m_free_queue.push(index);
     }
 
-    /** @todo */
+    /**
+     * \brief Gets a point to a pool object based on it's index.
+     *
+     * \param index Index of object within pool.
+     *
+     * \return Pointer to object with the given index.
+     */
     JOBS_FORCE_INLINE data_type* get_index(size_t index)
     {
         return &m_objects[index];
     }
 
-    /** @todo */
+    /**
+    * \brief Gets the number of allocated objects in the pool.
+    *
+    * \return Number of allocated objects in the pool.
+    */
     JOBS_FORCE_INLINE size_t count()
     {
         return m_capacity - m_free_queue.count();
     }
 
-    /** @todo */
+    /**
+    * \brief Gets the maximum number of objects in the pool.
+    *
+    * \return Maximum number of objects in the pool.
+    */
     JOBS_FORCE_INLINE size_t capacity()
     {
         return m_capacity;
@@ -889,19 +1061,16 @@ public:
 
 private:
 
-    /** @todo */
-    std::mutex m_access_mutex;
-
-    /** @todo */
+    /** Memory functions used for memory allocation. */
     memory_functions m_memory_functions;
 
-    /** @todo */
+    /** Linear buffer of all objects held in this pool. */
     data_type* m_objects = nullptr;
 
-    /** @todo */
+    /** Maximum number of objects in the pool. */
     size_t m_capacity = 0;
 
-    /** @todo */
+    /** Atomic queue of all indexes of objects that are current free for allocation. */
     atomic_queue<size_t> m_free_queue;
 };
 

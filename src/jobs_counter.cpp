@@ -387,8 +387,8 @@ bool counter_handle::modify_value(size_t new_value, bool absolute, bool subtract
     internal::counter_definition& def = m_scheduler->get_counter_definition(m_index);
 
     {
-        internal::spinwait_shared_lock lock(def.wait_list.get_mutex(), lock_required);
-
+        internal::optional_shared_lock<internal::spinwait_mutex> lock(def.wait_list.get_mutex(), lock_required);
+        
         size_t changed_value = 0;
         if (absolute)
         {
@@ -443,7 +443,7 @@ bool counter_handle::add_to_wait_list(internal::job_definition* job_def)
     }
     else
     {
-        internal::spinwait_shared_lock lock(def.wait_list.get_mutex());
+        internal::optional_shared_lock<internal::spinwait_mutex> lock(def.wait_list.get_mutex());
 
         // Is value equal? We don't need to wait.
         if (def.value == job_def->wait_counter_value)
