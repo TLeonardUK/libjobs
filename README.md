@@ -6,7 +6,7 @@
                    \/ \______|            \/      \/ 
 
 # About Libjobs
-Libjobs is a simple C++ library that is designed to allow coroutine-style job management and scheduling. It currently runs on Windows, XboxOne, PS4, Nintendo Switch, and is fairly straight forward to port to other platforms.
+Libjobs is a simple C++ library that is designed to allow coroutine-style job management and scheduling. It currently runs on Windows, XboxOne, PS4, Nintendo Switch, and is fairly straight forward to port to other platforms as it uses relatively little platform-dependent code.
 
 @todo
 
