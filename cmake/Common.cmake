@@ -40,6 +40,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	
 	# Pix enabled
 	add_definitions(-DUSE_PIX)
+	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 	set(USE_PIX ON CACHE INTERNAL "")
 
 	# Enable fiber-safe optimizations on msvc build, otherwise it will cache thread_local vars
@@ -55,6 +56,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "XboxOne")
 
 	# Pix enabled
 	add_definitions(-DUSE_PIX)
+	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 	set(USE_PIX ON CACHE INTERNAL "")
 
 	# Enable fiber-safe optimizations on msvc build, otherwise it will cache thread_local vars

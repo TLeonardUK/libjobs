@@ -738,7 +738,7 @@ private:
     const static size_t max_fiber_pools = 16;
 
     /** Maximum size of each log message. */
-    static const int max_log_size = 1024;
+    static const int max_log_size = 256;
 
     /** Maximum number of jobs this scheduler can handle concurrently. */
     size_t m_max_jobs = 100;

@@ -72,13 +72,7 @@ result job_context::enter_scope(profile_scope_type type, bool unformatted, const
     {
         va_list list;
         va_start(list, tag);
-
-        // @todo
-        // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
-        // we're just memsetting this here. Needs to be done correctly.
-        memset(scope->tag, 0, profile_scope_definition::max_tag_length);
-        vsnprintf(scope->tag, profile_scope_definition::max_tag_length - 1, tag, list);
-
+        vsnprintf(scope->tag, profile_scope_definition::max_tag_length, tag, list);
         va_end(list);
     }
 
@@ -289,11 +283,7 @@ result job_handle::set_tag(const char* tag)
     internal::job_definition& definition = m_scheduler->get_job_definition(m_index);
     size_t tag_len = strlen(tag);
     size_t to_copy = JOBS_MIN(tag_len, internal::job_definition::max_tag_length - 1);
-#if defined(JOBS_PLATFORM_WINDOWS)
-    strncpy_s(definition.tag, internal::job_definition::max_tag_length, tag, to_copy);
-#else
     strncpy(definition.tag, tag, to_copy);
-#endif
     definition.tag[to_copy] = '\0';
 
     return result::success;

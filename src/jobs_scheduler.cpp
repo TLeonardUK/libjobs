@@ -51,7 +51,7 @@ thread_local scheduler* scheduler::m_worker_thread_scheduler{nullptr};
 thread_local scheduler::worker_thread_state* scheduler::m_worker_thread_state{nullptr};
 bool scheduler::m_profiling_active = false;
 
-/** @todo */
+/** Holds the thread-local state of an individual worker thread. */
 class scheduler::worker_thread_state
 {
 public:
@@ -307,9 +307,6 @@ result scheduler::init()
         return result::no_fiber_pools;
     }
 
-    // @todo Might be worth changing this so we can initialize
-    // multiple times if the first time fails for some reason? Would need
-    // to adjust the initialization below so we don't do anything twice.
     m_initialized = true;
 
     // Trampoline the memory functions so we can log allocations.
@@ -426,13 +423,9 @@ result scheduler::init()
         {
             new(instance) internal::fiber(m_memory_functions);
 
-            char buffer[128];
+            char buffer[64];
             memset(buffer, 0, sizeof(buffer));
-#if defined(JOBS_PLATFORM_WINDOWS)
-            sprintf_s(buffer, 127, "Job (Pool=%zi Index=%zi)", i, index);
-#else
             sprintf(buffer, "Job (Pool=%zi Index=%zi)", i, index);
-#endif
             return instance->init(pool.stack_size, [this, i, index]()
             {
                 worker_fiber_entry_point(i, index);
@@ -485,13 +478,9 @@ result scheduler::init()
             size_t core_affinity = ((size_t)1 << (thread_index % logical_cores));
             thread_index++;
 
-            char buffer[128];
+            char buffer[64];
             memset(buffer, 0, sizeof(buffer));
-#if defined(JOBS_PLATFORM_WINDOWS)
-            sprintf_s(buffer, 127, "Worker (Pool=%zi:%zi Affinity=%zi)", i, index, core_affinity);
-#else
             sprintf(buffer, "Worker (Pool=%zi:%zi Affinity=%zi)", i, index, core_affinity);
-#endif
 
             return instance->init([&, i, index, thread_index]()
             {
@@ -774,28 +763,29 @@ void scheduler::write_log(debug_log_verbosity level, debug_log_group group, cons
     // Format message.
     va_list list;
     va_start(list, message);
-
-    // @todo
-    // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
-    // we're just memsetting this here. Needs to be done correctly.
-    memset(m_log_buffer, 0, max_log_size);
-    vsnprintf(m_log_buffer, max_log_size - 1, message, list);
-
+    vsnprintf(m_log_buffer, max_log_size, message, list);
     va_end(list);
 
     // Format log in format:
     //	[verbose] warning: message
 
-    // @todo
-    // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
-    // we're just memsetting this here. Needs to be done correctly.
-    memset(m_log_format_buffer, 0, max_log_size);
-    snprintf(m_log_format_buffer, max_log_size - 1, "[%08x][%p][%s] %s: %s\n", 
+#if defined(JOBS_USE_VERBOSE_LOGGING)
+
+    snprintf(m_log_format_buffer, max_log_size, "[%08x][%p][%s] %s: %s\n", 
         *reinterpret_cast<unsigned int*>(&std::this_thread::get_id()),
         m_worker_thread_state,
         internal::debug_log_group_strings[(int)group], 
         internal::debug_log_verbosity_strings[(int)level], 
         m_log_buffer);
+
+#else
+
+    snprintf(m_log_format_buffer, max_log_size, "[%s] %s: %s\n",
+        internal::debug_log_group_strings[(int)group],
+        internal::debug_log_verbosity_strings[(int)level],
+        m_log_buffer);
+
+#endif
 
     m_debug_output_function(level, group, m_log_format_buffer);
 }
@@ -1375,7 +1365,6 @@ result scheduler::wait_for_job(job_handle job_handle_in, timeout wait_timeout)
 {
     jobs_profile_scope(profile_scope_type::worker, "scheduler::wait_for_job", this);
 
-    // @todo if we are already signaled and not auto-reset, just return.
     internal::job_context* context = get_active_job_context();
     internal::job_context* worker_context = get_worker_job_context();
 

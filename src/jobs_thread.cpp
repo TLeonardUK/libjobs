@@ -49,7 +49,7 @@ result thread::init(const thread_entry_point& entry_point, const char* name, siz
 {
 #if defined(JOBS_PLATFORM_WINDOWS)
 
-    wchar_t wide_name[128];
+    wchar_t wide_name[64];
     std::mbstate_t state = std::mbstate_t();
     size_t ret_size = 0;
     mbsrtowcs_s(&ret_size, wide_name, &name, 128, &state);

@@ -28,19 +28,13 @@ namespace internal {
 
 void debug_print(const char* format, ...)
 {
-    const size_t max_length = 512;
+    const size_t max_length = 256;
 
     char buffer[max_length];
 
     va_list list;
     va_start(list, format);
-
-    // @todo
-    // microsofts behaviour of vsnprintf is significantly different from the standard, so to make sure
-    // we're just memsetting this here. Needs to be done correctly.
-    memset(buffer, 0, max_length);
-    vsnprintf(buffer, max_length - 1, format, list);
-
+    vsnprintf(buffer, max_length, format, list);
     va_end(list);
 
 #if defined(JOBS_PLATFORM_SWITCH)
