@@ -6,9 +6,11 @@
                    \/ \______|            \/      \/ 
 
 # About Libjobs
-Libjobs is a simple C++ library that is designed to allow coroutine-style job management and scheduling. It currently runs on Windows, XboxOne, PS4, Nintendo Switch, and is fairly straight forward to port to other platforms as it uses relatively little platform-dependent code.
+Libjobs is a simple C++ library that is designed to allow multi-threaded coroutine-style job management and scheduling (implemented using fibers). It currently runs on Windows, XboxOne, PS4, Nintendo Switch, and is fairly straight forward to port to other platforms as it uses relatively little platform-dependent code.
 
-@todo
+Implementing jobs using fibers provides a variety of benefits. Primarily it provides the developer the illusion they are working with threads, and allows them to do things that would typically block the cpu (waiting on sync primitives, sleeping, waiting for tasks to complete, wait for io, etc), without actually doing so. Allowing optimal usage of available processing power.
+
+Architecturally libjobs is designed to run a fixed number of worker threads (preferably one per core), with each thread picking up and executing jobs. Jobs are cooperatively scheduled, so whenever a blocking event occurs, the worker thread stops executing it and starts running another job, while the waiting job is queued for re-execution when its wait condition completes. The library also supports different job and worker priorities so jobs can be appropriate ordered and split between different workers.
 
 # Basic Usage
 @todo
@@ -16,7 +18,7 @@ Libjobs is a simple C++ library that is designed to allow coroutine-style job ma
 # Building
 The project uses cmake for building the library and examples. It's also been setup with a CMakeSettings.json file so it can be opened as a folder project in visual studio.
 
-Building is identical to most cmake projects, check a cmake tutorial if you are unsure. The only caveat is that we cross-compile various platform builds, to make cmake build these you need to use the appropriate toolchain file (which are stored in cmake/Toolchain). You can pass these as parameters when configuring the project with cmake. eg.
+Building is identical to most cmake projects, check a cmake tutorial if you are unsure. The only caveat is that we cross-compile various platform builds. To make cmake build these you need to use the appropriate toolchain file (which are stored in cmake/Toolchain). You can pass these as parameters when configuring the project with cmake. eg.
 
 -DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain/PS4.cmake
 
