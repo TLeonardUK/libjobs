@@ -15,6 +15,9 @@ Architecturally libjobs is designed to run a fixed number of worker threads (pre
 # Basic Usage
 @todo
 
+# API Reference
+The library uses doxygen for its api reference. Once the project is build the output will be stored on docs/html.
+
 # Building
 The project uses cmake for building the library and examples. It's also been setup with a CMakeSettings.json file so it can be opened as a folder project in visual studio.
 
