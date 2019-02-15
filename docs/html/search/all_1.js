@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['callback',['callback',['../structjobs_1_1internal_1_1callback__definition.html#ac97286621f492f4b3e2d5f992519eb87',1,'jobs::internal::callback_definition']]],
+  ['callback_5fdefinition',['callback_definition',['../structjobs_1_1internal_1_1callback__definition.html',1,'jobs::internal']]],
+  ['callback_5fscheduler',['callback_scheduler',['../classjobs_1_1internal_1_1callback__scheduler.html',1,'jobs::internal::callback_scheduler'],['../classjobs_1_1internal_1_1callback__scheduler.html#ae9c22e32208d0d29573db91e0a05cf0c',1,'jobs::internal::callback_scheduler::callback_scheduler()']]],
+  ['callback_5fscheduler_5ffunction',['callback_scheduler_function',['../namespacejobs_1_1internal.html#ac7be7ae8a0ccace4eb97136ef25e5ebe',1,'jobs::internal']]],
+  ['cancel',['cancel',['../classjobs_1_1internal_1_1callback__scheduler.html#a4d8f6a2f815d12c8fcc25bedfde5189c',1,'jobs::internal::callback_scheduler']]],
+  ['capacity',['capacity',['../structjobs_1_1internal_1_1fixed__pool.html#a2d1968bfc305acc09a162781edb68cb0',1,'jobs::internal::fixed_pool']]],
+  ['clear_5fdependencies',['clear_dependencies',['../classjobs_1_1job__handle.html#aff776ead6f28b265acb570cda87bc71c',1,'jobs::job_handle']]],
+  ['clear_5fjob_5fdependencies',['clear_job_dependencies',['../classjobs_1_1scheduler.html#a7f238503831b8b525189ef84420dc5a5',1,'jobs::scheduler']]],
+  ['cloned_5fjob_5findex',['cloned_job_index',['../classjobs_1_1scheduler_1_1worker__thread__state.html#ae8ddc0c9632fb685bf03f43c8c72847a',1,'jobs::scheduler::worker_thread_state']]],
+  ['complete_5fjob',['complete_job',['../classjobs_1_1scheduler.html#a7c70f317ba5e0da9bfdce9579fbe1095',1,'jobs::scheduler']]],
+  ['completed',['completed',['../namespacejobs_1_1internal.html#affa587321e99cccfac52fe94992b95d8aaa8fb77e57d1ca18d593e909729871fe',1,'jobs::internal']]],
+  ['completion_5fcounter',['completion_counter',['../classjobs_1_1internal_1_1job__definition.html#ad518efc3081d49fd3cc8de38722b6a6f',1,'jobs::internal::job_definition']]],
+  ['context',['context',['../classjobs_1_1internal_1_1job__definition.html#a36336d4a653b3b5f4e21311a047004f2',1,'jobs::internal::job_definition']]],
+  ['convert_5ffiber_5fto_5fthread',['convert_fiber_to_thread',['../classjobs_1_1internal_1_1fiber.html#ac36b8d88ad38ac36d0b08613b8317988',1,'jobs::internal::fiber']]],
+  ['convert_5fthread_5fto_5ffiber',['convert_thread_to_fiber',['../classjobs_1_1internal_1_1fiber.html#a060d30f56f64b3eed50cbc5270981a67',1,'jobs::internal::fiber']]],
+  ['count',['count',['../structjobs_1_1internal_1_1atomic__queue.html#a2ae9b34695b859568b2f1f4c29c54504',1,'jobs::internal::atomic_queue::count()'],['../structjobs_1_1internal_1_1fixed__queue.html#a6bd5a6796c110c558f5e2e324ce0993c',1,'jobs::internal::fixed_queue::count()'],['../structjobs_1_1internal_1_1fixed__pool.html#a9993ae96085620e4cadde8cb334163f3',1,'jobs::internal::fixed_pool::count()'],['../namespacejobs.html#a2116e27fa7d2a583aaaa7fcfe70f428dae2942a04780e223b215eb8b663cf5353',1,'jobs::count()'],['../namespacejobs.html#a84a967deecc18ff078537991c3f49c6fae2942a04780e223b215eb8b663cf5353',1,'jobs::count()'],['../namespacejobs.html#ab8cd038ddce7c48eabbed1d0a3428ad7ae2942a04780e223b215eb8b663cf5353',1,'jobs::count()']]],
+  ['counter_5fdefinition',['counter_definition',['../classjobs_1_1internal_1_1counter__definition.html',1,'jobs::internal::counter_definition'],['../classjobs_1_1internal_1_1counter__definition.html#a0a3f3245f53ad86c9d684513d23d30c3',1,'jobs::internal::counter_definition::counter_definition()']]],
+  ['counter_5fhandle',['counter_handle',['../classjobs_1_1counter__handle.html',1,'jobs::counter_handle'],['../classjobs_1_1scheduler.html#a3b991fc8e13eaf018863c325802748de',1,'jobs::scheduler::counter_handle()'],['../classjobs_1_1counter__handle.html#a234b27dd6c84bb31d5e66725403c6755',1,'jobs::counter_handle::counter_handle(scheduler *scheduler, size_t index)'],['../classjobs_1_1counter__handle.html#a1a1c9b33a6e297e841c6962a46dd4896',1,'jobs::counter_handle::counter_handle()'],['../classjobs_1_1counter__handle.html#ac7ff42358c9dc73a2bf2b853b7660b41',1,'jobs::counter_handle::counter_handle(const counter_handle &amp;other)']]],
+  ['create_5fcounter',['create_counter',['../classjobs_1_1scheduler.html#a71779aafde74ca64c59956fb3223a562',1,'jobs::scheduler']]],
+  ['create_5fevent',['create_event',['../classjobs_1_1scheduler.html#a707d218b879eec037670e5cf3bf6e09b',1,'jobs::scheduler']]],
+  ['create_5fjob',['create_job',['../classjobs_1_1scheduler.html#adb677b86975a1ce1d9e6cee58669d5e6',1,'jobs::scheduler']]],
+  ['critical',['critical',['../namespacejobs.html#a2116e27fa7d2a583aaaa7fcfe70f428da7e85bcb66fb9a809d5ab4f62a8b8bea8',1,'jobs']]]
+];

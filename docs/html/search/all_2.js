@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['debug_5flog_5fgroup',['debug_log_group',['../namespacejobs.html#ab8cd038ddce7c48eabbed1d0a3428ad7',1,'jobs']]],
+  ['debug_5flog_5fgroup_5fstrings',['debug_log_group_strings',['../namespacejobs_1_1internal.html#a178d15be584a4b5d0015cb3d3b06c4f9',1,'jobs::internal']]],
+  ['debug_5flog_5fverbosity',['debug_log_verbosity',['../namespacejobs.html#a84a967deecc18ff078537991c3f49c6f',1,'jobs']]],
+  ['debug_5flog_5fverbosity_5fstrings',['debug_log_verbosity_strings',['../namespacejobs_1_1internal.html#a274e9517c76c6839c2abc135db0eca7c',1,'jobs::internal']]],
+  ['debug_5foutput_5ffunction',['debug_output_function',['../namespacejobs.html#ae733fd1ddde20a364fc1cc85de1c6e22',1,'jobs']]],
+  ['debug_5fprint',['debug_print',['../namespacejobs_1_1internal.html#ac573e8163dea01aadcb26bcb6dadede3',1,'jobs::internal']]],
+  ['decrease_5fcounter_5fref_5fcount',['decrease_counter_ref_count',['../classjobs_1_1scheduler.html#aadc9091b54da263ea494744a967fbdef',1,'jobs::scheduler']]],
+  ['decrease_5fjob_5fref_5fcount',['decrease_job_ref_count',['../classjobs_1_1scheduler.html#a4edfdfa7c00e4e3cd2b7f80ef99f4e7b',1,'jobs::scheduler']]],
+  ['decrease_5fref',['decrease_ref',['../classjobs_1_1counter__handle.html#a6981cc45dc1e36225394d77bf556dfa8',1,'jobs::counter_handle::decrease_ref()'],['../classjobs_1_1job__handle.html#afb41ac932cd7313ad139bd25617c4ef7',1,'jobs::job_handle::decrease_ref()']]],
+  ['default_5falloc',['default_alloc',['../classjobs_1_1scheduler.html#a58f9ff98d6d4e2c3c24647d61048cd2c',1,'jobs::scheduler']]],
+  ['default_5ffree',['default_free',['../classjobs_1_1scheduler.html#a47ace198fd7b6353e7a9d456f3eab514',1,'jobs::scheduler']]],
+  ['destroy',['destroy',['../classjobs_1_1internal_1_1fiber.html#ae48cf46cf6033334f8b6c070b6e2a8f7',1,'jobs::internal::fiber']]],
+  ['dispatch',['dispatch',['../classjobs_1_1job__handle.html#a3a1b791bc9b7a7ac0b3bc569f172a0b0',1,'jobs::job_handle']]],
+  ['dispatch_5fbatch',['dispatch_batch',['../classjobs_1_1scheduler.html#a5f413f28876852e06468815ec6aee8e6',1,'jobs::scheduler']]],
+  ['dispatch_5fjob',['dispatch_job',['../classjobs_1_1scheduler.html#a9bb931be59ebef58a026d292362ad68d',1,'jobs::scheduler']]],
+  ['duration',['duration',['../structjobs_1_1internal_1_1callback__definition.html#aa7b22f2fab3339594c72a46dff526af6',1,'jobs::internal::callback_definition::duration()'],['../structjobs_1_1timeout.html#a3ed55073be756fdd307ca80ef4c46f09',1,'jobs::timeout::duration()']]]
+];

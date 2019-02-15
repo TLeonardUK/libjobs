@@ -1,9 +1,11 @@
-    .__   .__ ___.         __        ___.            
+```
+	.__   .__ ___.         __        ___.            
     |  |  |__|\_ |__      |__|  ____ \_ |__    ______
     |  |  |  | | __ \     |  | /  _ \ | __ \  /  ___/
     |  |__|  | | \_\ \    |  |(  <_> )| \_\ \ \___ \ 
     |____/|__| |___  //\__|  | \____/ |___  //____  >
                    \/ \______|            \/      \/ 
+```
 
 ## About Libjobs
 Libjobs is a simple C++ library that is designed to allow multi-threaded coroutine-style job management and scheduling (implemented using fibers). It currently runs on Windows, XboxOne, PS4, Nintendo Switch, and is fairly straight forward to port to other platforms as it uses relatively little platform-dependent code.
