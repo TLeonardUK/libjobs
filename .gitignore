@@ -8,6 +8,7 @@ ORBISDebug/
 ORBIS_Release/
 ORBIS_Debug/
 NX64/
+docs/examples/projects/
 
 # User-specific files
 *.rsuser
