@@ -61,17 +61,46 @@ Various API's exist for waiting for individual jobs, counters or other syncroniz
 scheduler.wait_until_idle();
 ```
 
-## Syncronization
-Syncronization is primarily done in three ways, waiting for jobs, waiting for counters and other sync primitives, and hard-set dependencies.
+## Synchronization
+Synchronization is primarily done in three ways, waiting for jobs, waiting for counters and other sync primitives, and explicit dependencies.
 
-### Hard-Set Dependencies
-@todo
+### Explicit Dependencies
+Before jobs are dispatched they can have predecessor and successor jobs added to them. The scheduler will never attempt to queue a job for execution until its dependencies are met. This is the cheapest form of synchronization and provides very explit control over execution order.
+
+```cpp
+jobs::job_handle job_1;
+scheduler.create_job(job_1);
+
+job_1.add_predecessor(other_job_handle);
+job_1.add_successor(another_job_handle);
+```
 
 ### Waiting For Jobs
-@todo
+Both jobs and external-threads can wait for execution to finish on individual jobs using the wait_for method of a job handle. For a job, this will cause it to be requeued until the dependent job is finished, for external-threads this will cause a block. Timeouts are also supported.
+
+```cpp
+job_1.wait(jobs::timeout::infinite);
+```
 
 ### Waiting For Counters
-@todo
+Counters provide a simple and straight-forward way to synchronize operations between multiple jobs, they also provide the building blocks that the other synchronisation primitives build of (events/semaphores/etc).
+
+Internally a counter is just an unsigned atomic integer. The integer can be added to, set or subtracted from. Jobs can wait until the integer equals a given value. Counters can never go below zero so attempting to subtract a value larger that it's current value will cause the job to wait until enough has been added to the counter to no longer cause the subtraction to go negative.
+
+You can use this to synchronize large numbers of jobs at the same time:
+
+```cpp
+// Create a counter to synchronize with.
+jobs::counter_handle counter_1;
+scheduler.create_counter(counter_1);
+
+// ... Spawn 100 jobs that each increment counter_1 when they complete.
+
+// Block until all jobs have completed.
+counter_1.wait_for(100, jobs::timeout::infinite);
+```
+
+Counters, while fundementally simple, provide an immense amount of flexibility.
 
 ## Contact Details
 Any questions you are welcome to send me an email;
