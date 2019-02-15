@@ -14,6 +14,16 @@ Architecturally libjobs is designed to run a fixed number of worker threads (pre
 
 The library is designed for both high-performance and limited resources. Memory allocation (overridable with use defined allocation functions) is done during scheduler initialization and no memory is allocated beyond that point.
 
+## Building
+The project uses cmake for building the library and examples. It's also been setup with a CMakeSettings.json file so it can be opened as a folder project in visual studio.
+
+Building is identical to most cmake projects, check a cmake tutorial if you are unsure. The only caveat is that we cross-compile various platform builds. To make cmake build these you need to use the appropriate toolchain file (which are stored in cmake/Toolchain). You can pass these as parameters when configuring the project with cmake. eg.
+
+-DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain/PS4.cmake
+
+## API Reference
+The library uses doxygen for its api reference. Once the project is build the output will be stored on docs/html.
+
 ## Basic Usage
 Examples of how to use the library are provided in docs/examples. Below is a brief explanation of the minimal steps required to run a job.
 
@@ -62,16 +72,6 @@ Syncronization is primarily done in three ways, waiting for jobs, waiting for co
 
 ### Waiting For Counters
 @todo
-
-## API Reference
-The library uses doxygen for its api reference. Once the project is build the output will be stored on docs/html.
-
-## Building
-The project uses cmake for building the library and examples. It's also been setup with a CMakeSettings.json file so it can be opened as a folder project in visual studio.
-
-Building is identical to most cmake projects, check a cmake tutorial if you are unsure. The only caveat is that we cross-compile various platform builds. To make cmake build these you need to use the appropriate toolchain file (which are stored in cmake/Toolchain). You can pass these as parameters when configuring the project with cmake. eg.
-
--DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain/PS4.cmake
 
 ## Contact Details
 Any questions you are welcome to send me an email;
