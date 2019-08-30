@@ -30,7 +30,7 @@ namespace jobs {
 namespace internal {
 
 counter_definition::counter_definition()
-#if defined(JOBS_PLATFORM_PS4)
+#if defined(JOBS_PLATFORM_PS4) 
     : value_cvar(nullptr) // -_-. Why do sync-primitives's have to be named by default on ps4.
     , value_cvar_mutex(nullptr)
 #endif
@@ -122,7 +122,7 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
 
         // Put job to sleep.
         {
-            context->job_def->status = internal::job_status::waiting_on_counter;
+            context->job_def->status.store(internal::job_status::waiting_on_counter, std::memory_order_relaxed);
             context->job_def->wait_counter = *this;
             context->job_def->wait_counter_value = value;
             context->job_def->wait_counter_remove_value = false;
@@ -155,7 +155,7 @@ result counter_handle::wait_for(size_t value, timeout in_timeout)
             if (res != result::success)
             {
                 remove_from_wait_list(context->job_def);
-                context->job_def->status = internal::job_status::pending;
+                context->job_def->status.store(internal::job_status::pending, std::memory_order_relaxed);
                 return res;
             }
         }
@@ -248,7 +248,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
 
         // Put job to sleep.
         {
-            context->job_def->status = internal::job_status::waiting_on_counter;
+            context->job_def->status.store(internal::job_status::waiting_on_counter, std::memory_order_relaxed);
             context->job_def->wait_counter = *this;
             context->job_def->wait_counter_value = value;
             context->job_def->wait_counter_remove_value = true;
@@ -281,7 +281,7 @@ result counter_handle::remove(size_t value, timeout in_timeout)
             if (res != result::success)
             {
                 remove_from_wait_list(context->job_def);
-                context->job_def->status = internal::job_status::pending;
+                context->job_def->status.store(internal::job_status::pending, std::memory_order_relaxed);
                 return res;
             }
         }
@@ -432,7 +432,7 @@ bool counter_handle::add_to_wait_list(internal::job_definition* job_def)
         // Value high enough to remove? We don't need to wait. 
         if (modify_value(job_def->wait_counter_value, false, true, false))
         {
-            job_def->status = internal::job_status::pending;
+            job_def->status.store(internal::job_status::running, std::memory_order_relaxed);
             job_def->wait_counter = counter_handle();
 
             return false;
@@ -448,7 +448,7 @@ bool counter_handle::add_to_wait_list(internal::job_definition* job_def)
         // Is value equal? We don't need to wait.
         if (def.value == job_def->wait_counter_value)
         {
-            job_def->status = internal::job_status::pending;
+            job_def->status.store(internal::job_status::running, std::memory_order_relaxed);
             job_def->wait_counter = counter_handle();
 
             return false;
